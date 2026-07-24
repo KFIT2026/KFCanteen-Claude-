@@ -10,13 +10,6 @@ const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","
 
 // helpers
 const getDateKey = (date) => DAYS[Math.min(date.getDay()===0?5:date.getDay()-1,5)]; // Mon-Sat day name
-// traditional calendar week number (week containing Jan 1 = week 1)
-const getWeekNumber = (date) => {
-  const start = new Date(date.getFullYear(),0,1);
-  const diffDays = Math.floor((date - start)/86400000);
-  return Math.ceil((diffDays + start.getDay() + 1)/7);
-};
-const getWeekKey = (date) => `${date.getFullYear()}-${getWeekNumber(date)}`;
 const formatDateLabel = (date) => date.toLocaleDateString("en-PH",{month:"short",day:"numeric"});
 const formatDateFull  = (date) => date.toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
 const isSameDay = (a,b) => a.toDateString()===b.toDateString();
@@ -59,7 +52,7 @@ const USERS = [
   { id:"u13", username:"staff.kg",   password:"kg123",     role:"staff",       name:"Carlos Lim",       avatar:"CL", plant:"KF-Global", idNumber:"KF2301001",  phone:"09231234513", creditLimit:1000, creditBalance:1000, registered:true },
   // Customers
   { id:"u4",  username:"juan",       password:"user123",   role:"user",        name:"Juan dela Cruz",   avatar:"JD", plant:"KF-Main",   idNumber:"KF2300004",  phone:"09201234504", creditLimit:1000, creditBalance:856,  registered:true },
-  { id:"u5",  username:"maria",      password:"user456",   role:"user",        name:"Maria Santos",     avatar:"MS", plant:"Colortree", idNumber:"CT-23-0005", phone:"09211234505", creditLimit:1000, creditBalance:55,   registered:true },
+  { id:"u5",  username:"maria",      password:"user456",   role:"user",        name:"Maria Santos",     avatar:"MS", plant:"Colortree", idNumber:"CT-23-0005", phone:"09211234505", creditLimit:1000, creditBalance:75,   registered:true },
   { id:"u16", username:"paulo",      password:"paulo123",  role:"user",        name:"Paulo Fernandez",  avatar:"PF", plant:"KF-Global", idNumber:"KF2301004",  phone:"09261234516", creditLimit:1000, creditBalance:950,  registered:true },
   // Unregistered employees awaiting self-registration
   { id:"u6",  username:"", password:"", role:"user", name:"Liza Reyes",      avatar:"LR", plant:"KF-Main",   idNumber:"KF2301003",  phone:"", creditLimit:1000, creditBalance:1000, registered:false },
@@ -123,43 +116,41 @@ const defaultMenu = {
 };
 
 const defaultOrders = [
-  // Jul 1 Wed - all 3 plants
-  { id:"KF000001", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-01", plant:"KF-Main",   items:[{name:"Adobo with Rice",qty:2,price:65,grams:350,buyPrice:null},{name:"Pandesal",qty:3,price:5,grams:50,buyPrice:null}], total:145, paymentType:"Cash",   time:"7:50 AM" },
-  { id:"KF000002", user:"Maria Santos",    userId:"u5",  date:"2026-07-01", plant:"Colortree", items:[{name:"Sinigang na Baboy",qty:1,price:75,grams:400,buyPrice:null},{name:"Rebisco Biscuit",qty:2,price:12,grams:null,buyPrice:7}], total:99, paymentType:"Credit", time:"8:20 AM" },
-  { id:"KF000003", user:"Paulo Fernandez", userId:"u16", date:"2026-07-01", plant:"KF-Global", items:[{name:"Nova Chips",qty:2,price:15,grams:null,buyPrice:8},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:42, paymentType:"Cash",   time:"9:00 AM" },
+  // Jun 25 - Wednesday
+  { id:"KF000001", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-25", plant:"KF-Main", items:[{name:"Lechon Kawali & Rice",qty:1,price:85,grams:380,buyPrice:null},{name:"Halo-halo",qty:1,price:50,grams:350,buyPrice:null}], total:135, paymentType:"Cash",   time:"8:10 AM" },
+  { id:"KF000002", user:"Maria Santos",    userId:"u5", date:"2026-06-25", plant:"KF-Main", items:[{name:"Pinakbet",qty:1,price:55,grams:280,buyPrice:null},{name:"Coca-Cola 1.5L",qty:1,price:75,grams:null,buyPrice:50}], total:130, paymentType:"Credit", time:"8:45 AM" },
+  { id:"KF000003", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-25", plant:"KF-Main", items:[{name:"Nova Chips",qty:2,price:15,grams:null,buyPrice:8},{name:"Nescafé 3-in-1",qty:1,price:8,grams:null,buyPrice:5}], total:38, paymentType:"Cash",   time:"10:00 AM" },
 
-  // Jul 2 Thu
-  { id:"KF000004", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-02", plant:"KF-Main",   items:[{name:"Lechon Kawali & Rice",qty:1,price:85,grams:380,buyPrice:null},{name:"Halo-halo",qty:1,price:50,grams:350,buyPrice:null}], total:135, paymentType:"Cash",   time:"8:10 AM" },
-  { id:"KF000005", user:"Maria Santos",    userId:"u5",  date:"2026-07-02", plant:"Colortree", items:[{name:"Pinakbet",qty:1,price:55,grams:280,buyPrice:null},{name:"Coca-Cola 1.5L",qty:1,price:75,grams:null,buyPrice:50}], total:130, paymentType:"Credit", time:"8:45 AM" },
-  { id:"KF000006", user:"Paulo Fernandez", userId:"u16", date:"2026-07-02", plant:"KF-Global", items:[{name:"Banana Cue",qty:3,price:10,grams:120,buyPrice:null},{name:"Tang Orange",qty:2,price:6,grams:null,buyPrice:3}], total:42, paymentType:"Cash",   time:"10:00 AM" },
+  // Jun 26 - Thursday
+  { id:"KF000004", user:"Maria Santos",    userId:"u5", date:"2026-06-26", plant:"KF-Main", items:[{name:"Kare-kare & Rice",qty:1,price:90,grams:420,buyPrice:null},{name:"Milo Sachet",qty:2,price:12,grams:null,buyPrice:7}], total:114, paymentType:"Credit", time:"8:30 AM" },
+  { id:"KF000005", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-26", plant:"KF-Main", items:[{name:"Laing",qty:1,price:60,grams:250,buyPrice:null},{name:"SkyFlakes",qty:3,price:10,grams:null,buyPrice:6}], total:90, paymentType:"Cash",   time:"9:15 AM" },
+  { id:"KF000006", user:"Maria Santos",    userId:"u5", date:"2026-06-26", plant:"KF-Main", items:[{name:"Banana Cue",qty:3,price:10,grams:120,buyPrice:null},{name:"Tang Orange",qty:2,price:6,grams:null,buyPrice:3}], total:42, paymentType:"Cash",   time:"2:00 PM" },
 
-  // Jul 3 Fri
-  { id:"KF000007", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-03", plant:"KF-Main",   items:[{name:"Bangus Sisig & Rice",qty:2,price:80,grams:360,buyPrice:null},{name:"Royal TruOrange 1L",qty:1,price:55,grams:null,buyPrice:38}], total:215, paymentType:"Credit", time:"8:00 AM" },
-  { id:"KF000008", user:"Maria Santos",    userId:"u5",  date:"2026-07-03", plant:"Colortree", items:[{name:"Ginisang Monggo",qty:1,price:55,grams:300,buyPrice:null},{name:"Piattos Cheese",qty:1,price:20,grams:null,buyPrice:12}], total:75, paymentType:"Cash",   time:"9:30 AM" },
-  { id:"KF000009", user:"Paulo Fernandez", userId:"u16", date:"2026-07-03", plant:"KF-Global", items:[{name:"Buko Pandan",qty:2,price:35,grams:200,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:110, paymentType:"Cash",   time:"1:00 PM" },
+  // Jun 27 - Friday
+  { id:"KF000007", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-27", items:[{name:"Bangus Sisig & Rice",qty:2,price:80,grams:360,buyPrice:null},{name:"Royal TruOrange 1L",qty:2,price:55,grams:null,buyPrice:38}], total:270, paymentType:"Credit", time:"8:00 AM" },
+  { id:"KF000008", user:"Maria Santos",    userId:"u5", date:"2026-06-27", items:[{name:"Ginisang Monggo",qty:1,price:55,grams:300,buyPrice:null},{name:"Piattos Cheese",qty:1,price:20,grams:null,buyPrice:12}], total:75, paymentType:"Cash",   time:"9:30 AM" },
+  { id:"KF000009", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-27", items:[{name:"Buko Pandan",qty:2,price:35,grams:200,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:110, paymentType:"Cash",   time:"1:00 PM" },
 
-  // Jul 4 Sat
-  { id:"KF000010", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-04", plant:"KF-Main",   items:[{name:"Bulalo & Rice",qty:1,price:120,grams:500,buyPrice:null},{name:"Mineral Water 500ml",qty:2,price:15,grams:null,buyPrice:8}], total:150, paymentType:"Cash",   time:"8:15 AM" },
-  { id:"KF000011", user:"Maria Santos",    userId:"u5",  date:"2026-07-04", plant:"Colortree", items:[{name:"Nilaga",qty:1,price:80,grams:450,buyPrice:null},{name:"Lucky Me! Pancit Canton",qty:2,price:18,grams:null,buyPrice:10}], total:116, paymentType:"Credit", time:"9:00 AM" },
-  { id:"KF000012", user:"Paulo Fernandez", userId:"u16", date:"2026-07-04", plant:"KF-Global", items:[{name:"Turon",qty:4,price:15,grams:100,buyPrice:null},{name:"Great Taste Coffee",qty:2,price:8,grams:null,buyPrice:5}], total:76, paymentType:"Cash",   time:"2:30 PM" },
+  // Jun 28 - Saturday
+  { id:"KF000010", user:"Maria Santos",    userId:"u5", date:"2026-06-28", items:[{name:"Bulalo & Rice",qty:1,price:120,grams:500,buyPrice:null},{name:"Mineral Water 500ml",qty:2,price:15,grams:null,buyPrice:8}], total:150, paymentType:"Cash",   time:"8:15 AM" },
+  { id:"KF000011", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-28", items:[{name:"Nilaga",qty:2,price:80,grams:450,buyPrice:null},{name:"Lucky Me! Pancit Canton",qty:2,price:18,grams:null,buyPrice:10}], total:196, paymentType:"Credit", time:"9:00 AM" },
+  { id:"KF000012", user:"Maria Santos",    userId:"u5", date:"2026-06-28", items:[{name:"Turon",qty:4,price:15,grams:100,buyPrice:null},{name:"Great Taste Coffee",qty:2,price:8,grams:null,buyPrice:5}], total:76, paymentType:"Cash",   time:"2:30 PM" },
 
-  // Jul 6 Mon (TODAY) - mix of paid and unpaid
-  { id:"KF000013", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-06", plant:"KF-Main",   items:[{name:"Adobo with Rice",qty:2,price:65,grams:350,buyPrice:null},{name:"Pandesal",qty:2,price:5,grams:50,buyPrice:null}], total:140, paymentType:"Cash",   time:"7:50 AM" },
-  { id:"KF000014", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Sinigang na Baboy",qty:1,price:75,grams:400,buyPrice:null},{name:"Rebisco Biscuit",qty:2,price:12,grams:null,buyPrice:7}], total:99, paymentType:"Credit", time:"8:20 AM" },
-  { id:"KF000015", user:"Paulo Fernandez", userId:"u16", date:"2026-07-06", plant:"KF-Global", items:[{name:"Nova Chips",qty:2,price:15,grams:null,buyPrice:8},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:42, paymentType:"Cash",   time:"9:00 AM" },
-  { id:"KF000016", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-06", plant:"KF-Main",   items:[{name:"Tinola with Rice",qty:1,price:65,grams:370,buyPrice:null},{name:"SkyFlakes",qty:2,price:10,grams:null,buyPrice:6}], total:85, time:"10:15 AM" },
-  { id:"KF000017", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Chopsuey",qty:1,price:55,grams:300,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:95, time:"11:00 AM" },
-  { id:"KF000018", user:"Paulo Fernandez", userId:"u16", date:"2026-07-06", plant:"KF-Global", items:[{name:"Maja Blanca",qty:2,price:30,grams:150,buyPrice:null},{name:"Nescafe 3-in-1",qty:2,price:8,grams:null,buyPrice:5}], total:76, time:"11:30 AM" },
-  { id:"KF000019", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Kare-kare & Rice",qty:1,price:90,grams:420,buyPrice:null},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:102, time:"2:00 PM" },
+  // Jun 30 - Monday
+  { id:"KF000013", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-30", items:[{name:"Adobo with Rice",qty:2,price:65,grams:350,buyPrice:null},{name:"Pandesal",qty:3,price:5,grams:50,buyPrice:null}], total:145, paymentType:"Cash",   time:"7:50 AM" },
+  { id:"KF000014", user:"Maria Santos",    userId:"u5", date:"2026-06-30", items:[{name:"Sinigang na Baboy",qty:1,price:75,grams:400,buyPrice:null},{name:"Rebisco Biscuit",qty:2,price:12,grams:null,buyPrice:7}], total:99, paymentType:"Credit", time:"8:40 AM" },
+  { id:"KF000015", user:"Juan dela Cruz",  userId:"u4", date:"2026-06-30", items:[{name:"Nova Chips",qty:1,price:15,grams:null,buyPrice:8},{name:"Milo Sachet",qty:2,price:12,grams:null,buyPrice:7}], total:39, paymentType:"Cash",   time:"10:30 AM" },
+  { id:"KF000016", user:"Maria Santos",    userId:"u5", date:"2026-06-30", items:[{name:"Pandesal",qty:5,price:5,grams:50,buyPrice:null},{name:"Nescafé 3-in-1",qty:3,price:8,grams:null,buyPrice:5}], total:49, paymentType:"Cash",   time:"2:15 PM" },
 
-  // ⚠️ DEMO: Maria has ₱55 credit but this order is ₱102 — credit will be blocked, cash only
-  { id:"KF000023", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Bulalo & Rice",qty:1,price:120,grams:500,buyPrice:null},{name:"Mineral Water 500ml",qty:1,price:15,grams:null,buyPrice:8}], total:135, time:"2:45 PM" },
-
-  // Early orders placed today for future dates
-  { id:"KF000020", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-07", plant:"KF-Main",   items:[{name:"Tinola with Rice",qty:1,price:65,grams:370,buyPrice:null},{name:"Pandesal",qty:2,price:5,grams:50,buyPrice:null}], total:75,  time:"8:05 AM" },
-  { id:"KF000021", user:"Maria Santos",    userId:"u5",  date:"2026-07-08", plant:"Colortree", items:[{name:"Adobo with Rice",qty:1,price:65,grams:350,buyPrice:null},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:77,  time:"9:10 AM" },
-  { id:"KF000022", user:"Paulo Fernandez", userId:"u16", date:"2026-07-09", plant:"KF-Global", items:[{name:"Kare-kare & Rice",qty:1,price:90,grams:420,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:130, time:"10:00 AM" },
+  // Jul 1 - Tuesday (Today)
+  { id:"KF000017", user:"Juan dela Cruz",  userId:"u4", date:"2026-07-01", items:[{name:"Adobo with Rice",qty:2,price:65,grams:350,buyPrice:null},{name:"Nova Chips",qty:1,price:15,grams:null,buyPrice:8}], total:145, paymentType:"Cash",   time:"8:15 AM" },
+  { id:"KF000018", user:"Maria Santos",    userId:"u5", date:"2026-07-01", items:[{name:"Sinigang na Baboy",qty:1,price:75,grams:400,buyPrice:null},{name:"Coca-Cola 1.5L",qty:1,price:75,grams:null,buyPrice:50}], total:150, paymentType:"Credit", time:"9:00 AM" },
+  { id:"KF000019", user:"Juan dela Cruz",  userId:"u4", date:"2026-07-01", items:[{name:"Pandesal",qty:5,price:5,grams:50,buyPrice:null},{name:"Nescafé 3-in-1",qty:2,price:8,grams:null,buyPrice:5}], total:41, paymentType:"Cash",   time:"9:30 AM" },
+  { id:"KF000020", user:"Maria Santos",    userId:"u5", date:"2026-07-01", items:[{name:"Tinola with Rice",qty:1,price:65,grams:370,buyPrice:null},{name:"Milo Sachet",qty:3,price:12,grams:null,buyPrice:7},{name:"SkyFlakes",qty:2,price:10,grams:null,buyPrice:6}], total:121, paymentType:"Credit", time:"10:15 AM" },
+  { id:"KF000021", user:"Juan dela Cruz",  userId:"u4", date:"2026-07-01", items:[{name:"Lechon Kawali & Rice",qty:1,price:85,grams:380,buyPrice:null},{name:"Royal TruOrange 1L",qty:1,price:55,grams:null,buyPrice:38}], total:140, time:"11:00 AM" },
+  { id:"KF000022", user:"Maria Santos",    userId:"u5", date:"2026-07-01", items:[{name:"Bangus Sisig & Rice",qty:2,price:80,grams:360,buyPrice:null},{name:"Piattos Cheese",qty:2,price:20,grams:null,buyPrice:12},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:240, time:"11:45 AM" },
 ];
+
 /* ── tiny icon SVG ── */
 const Icon = ({ name, size=16, color="currentColor" }) => {
   const paths = {
@@ -179,7 +170,6 @@ const Icon = ({ name, size=16, color="currentColor" }) => {
     eyeoff: <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>,
     check: <><polyline points="20 6 9 17 4 12"/></>,
     edit: <><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
-    receipt: <><path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"middle",flexShrink:0}}>
@@ -197,7 +187,6 @@ const NAV = {
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
     { id:"mgproducts",label:"Manage Products", icon:"products" },
-    { id:"receipts",  label:"Receipts",        icon:"receipt" },
     { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
   ],
@@ -205,7 +194,6 @@ const NAV = {
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
     { id:"mgproducts",label:"Manage Products", icon:"products" },
-    { id:"receipts",  label:"Receipts",        icon:"receipt" },
     { id:"history",   label:"Overall History", icon:"history" },
   ],
   staff: [
@@ -232,13 +220,6 @@ export default function KFCanteen() {
   const [nameSearch, setNameSearch] = useState("");
   const [registerError, setRegisterError] = useState("");
   const [registerShowPass, setRegisterShowPass] = useState(false);
-  const [showEmployeeCheck, setShowEmployeeCheck] = useState(false);
-  const [registerType, setRegisterType] = useState(null); // "employee" | "outside"
-  const [outsideForm, setOutsideForm] = useState({ name:"", email:"", phone:"", password:"", confirmPassword:"" });
-  const [outsideShowPass, setOutsideShowPass] = useState(false);
-  const [outsideShowConfirm, setOutsideShowConfirm] = useState(false);
-  const [outsideError, setOutsideError] = useState("");
-  const [customerSearch, setCustomerSearch] = useState("");
   const [users, setUsers] = useState(USERS);
   const [creditNotif, setCreditNotif] = useState(false);
   const [editCreditId, setEditCreditId] = useState(null);
@@ -246,16 +227,12 @@ export default function KFCanteen() {
   const [personnelSearch, setPersonnelSearch] = useState("");
   const [editRoleId, setEditRoleId] = useState(null);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importPreview, setImportPreview] = useState([]);
-  const [importError, setImportError] = useState("");
   const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF-Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF-Main"}]});
 
-  // menu / filter state — keyed by traditional calendar week (e.g. "2026-30"), then Mon-Sat day name
-  const [menu, setMenu] = useState(()=>({ [getWeekKey(TODAY_DATE)]: defaultMenu }));
+  // menu / filter state
+  const [menu, setMenu] = useState(defaultMenu);
   const [selectedDate, setSelectedDate] = useState(TODAY_DATE);
   const selectedDay = getDateKey(selectedDate); // the Mon-Sat day name for menu lookup
-  const selectedWeekKey = getWeekKey(selectedDate);
   const [mealCat, setMealCat] = useState("ALL");
   const [menuView, setMenuView] = useState("Weekly Menu"); // "Weekly Menu" | "Other Products"
   const [searchQ, setSearchQ] = useState("");
@@ -269,7 +246,7 @@ export default function KFCanteen() {
 
   // manage menu add form
   const [showAddItem, setShowAddItem] = useState(null);
-  const [newItem, setNewItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", days:[], weeks:[] });
+  const [newItem, setNewItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"" });
 
   const [dragOver, setDragOver] = useState(false);
   const photoInputRef = useRef(null);
@@ -288,12 +265,6 @@ export default function KFCanteen() {
   const [filterCat, setFilterCat] = useState("All");
   const [otherProducts, setOtherProducts] = useState(DEFAULT_OTHER_PRODUCTS);
   const [mgDay, setMgDay] = useState(TODAY);
-  const [mgDate, setMgDate] = useState(new Date(TODAY_DATE));
-  const mgWeekKey = getWeekKey(mgDate);
-  const mgWeekNumber = getWeekNumber(mgDate);
-  const [showMgCal, setShowMgCal] = useState(false);
-  const [mgCalYear, setMgCalYear] = useState(TODAY_DATE.getFullYear());
-  const [mgCalMonth, setMgCalMonth] = useState(TODAY_DATE.getMonth());
   const [showCalendar, setShowCalendar] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [stockModal, setStockModal] = useState(null);
@@ -304,7 +275,6 @@ export default function KFCanteen() {
   const [historyTab, setHistoryTab] = useState("orders");
   const [salesDate, setSalesDate] = useState(TODAY_DATE);
   const [showSalesCalendar, setShowSalesCalendar] = useState(false);
-  const [historySearch, setHistorySearch] = useState("");
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [scYear, setScYear] = useState(TODAY_DATE.getFullYear());
   const [scMonth, setScMonth] = useState(TODAY_DATE.getMonth());
@@ -358,30 +328,7 @@ export default function KFCanteen() {
     { id:"il40", product:"Piattos Cheese",         emoji:"🥔", type:"OUT", qty:2,  before:19, after:17, by:"System",    time:"Jul 1, 2026 · 11:45 AM" },
     { id:"il41", product:"C2 Apple 230ml",         emoji:"🧃", type:"OUT", qty:2,  before:23, after:21, by:"System",    time:"Jul 1, 2026 · 11:45 AM" },
   ]);
-  const [newProduct, setNewProduct] = useState({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
-  const [productDragOver, setProductDragOver] = useState(false);
-  const productPhotoInputRef = useRef(null);
-  const handleProductPhotoFile = useCallback((file) => {
-    if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewProduct(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
-  }, []);
-  const [productNameSuggestions, setProductNameSuggestions] = useState([]);
-
-  // receipts
-  const [receipts, setReceipts] = useState([]);
-  const [showAddReceipt, setShowAddReceipt] = useState(false);
-  const [newReceipt, setNewReceipt] = useState({ photo:null, date:new Date().toISOString().slice(0,10), amount:"", note:"" });
-  const [receiptDragOver, setReceiptDragOver] = useState(false);
-  const receiptPhotoInputRef = useRef(null);
-  const [viewReceipt, setViewReceipt] = useState(null);
-  const handleReceiptPhotoFile = useCallback((file) => {
-    if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewReceipt(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
-  }, []);
+  const [newProduct, setNewProduct] = useState({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"" });
 
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
@@ -451,23 +398,26 @@ export default function KFCanteen() {
         wsData.push(["Report By:", currentUser.name+" ("+currentUser.plant+")"]);
         wsData.push([]);
         // Column headers
-        wsData.push(["#","Order ID","Customer","Plant","Menu Date","Time","Items","Total","Payment","Status","Received At"]);
-        // Data rows - one row per order, items joined in one cell
+        wsData.push(["#","Order ID","Customer","Plant","Items","Qty","Unit Price","Subtotal","Payment","Time"]);
+        // Data rows
         ordersToExport.forEach(function(o, idx){
-          var itemsCell = o.items.map(function(it){ return it.name+" x"+it.qty; }).join(" | ");
-          wsData.push([
-            idx+1,
-            o.id,
-            o.user,
-            o.plant||"",
-            o.date,
-            o.time,
-            itemsCell,
-            o.total,
-            o.paymentType||"Unpaid",
-            o.receivedAt?"Received":"Pending",
-            o.receivedAt||"",
-          ]);
+          o.items.forEach(function(it, iIdx){
+            wsData.push([
+              iIdx===0 ? idx+1 : "",
+              iIdx===0 ? o.id : "",
+              iIdx===0 ? o.user : "",
+              iIdx===0 ? (o.plant||"") : "",
+              it.name,
+              it.qty,
+              it.price,
+              it.price*it.qty,
+              iIdx===0 ? (o.paymentType||"Unpaid") : "",
+              iIdx===0 ? o.time : "",
+            ]);
+          });
+          // Order subtotal row
+          wsData.push(["","","","","","","ORDER TOTAL","P"+o.total,"",""]);
+          wsData.push([]); // spacer
         });
 
         // Summary block
@@ -483,22 +433,9 @@ export default function KFCanteen() {
 
         // Set column widths
         ws["!cols"] = [
-          {wch:4},{wch:12},{wch:22},{wch:12},{wch:12},
-          {wch:10},{wch:40},{wch:10},{wch:10},{wch:10},{wch:22}
+          {wch:4},{wch:12},{wch:22},{wch:12},{wch:30},
+          {wch:6},{wch:12},{wch:12},{wch:12},{wch:10}
         ];
-
-        // Find header row (row index where headers are)
-        var headerRowIdx = wsData.findIndex(function(r){ return r[0]==="#"; });
-        var dataRowCount = ordersToExport.length;
-        var lastCol = String.fromCharCode(65 + 10); // K (11 columns: A-K)
-        var headerRef = "A"+(headerRowIdx+1);
-        var lastRef = lastCol+(headerRowIdx+1+dataRowCount);
-
-        // Add autofilter so every column header has a dropdown sort/filter arrow
-        ws["!autofilter"] = { ref: headerRef+":"+lastRef };
-
-        // Freeze top rows (info block + header)
-        ws["!freeze"] = { xSplit: 0, ySplit: headerRowIdx+1 };
 
         XLSX.utils.book_append_sheet(wb, ws, "Orders");
 
@@ -552,39 +489,6 @@ export default function KFCanteen() {
     setNameSearch("");
     setRegisterError("");
     setShowRegister(false);
-    setRegisterType(null);
-  };
-
-  const handleOutsideRegister = () => {
-    if(!outsideForm.name.trim()){ setOutsideError("Please enter your full name."); return; }
-    if(!outsideForm.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(outsideForm.email)){ setOutsideError("Please enter a valid email address."); return; }
-    if(!outsideForm.phone||!/^[0-9+\-\s]{7,15}$/.test(outsideForm.phone)){ setOutsideError("Please enter a valid cellphone number."); return; }
-    if(!outsideForm.password){ setOutsideError("Password is required."); return; }
-    if(outsideForm.password !== outsideForm.confirmPassword){ setOutsideError("Passwords do not match."); return; }
-    const name = toProperCase(outsideForm.name.trim());
-    const username = name.toLowerCase().replace(/\s+/g,".").replace(/[^a-z.]/g,"");
-    if(users.some(u=>u.username===username)){ setOutsideError("An account with a similar name already exists."); return; }
-    const newUser = {
-      id:"u"+Date.now(),
-      username,
-      password: outsideForm.password,
-      role:"user",
-      name,
-      avatar: name.split(" ").filter(Boolean).map(w=>w[0]).join("").toUpperCase().slice(0,2),
-      plant:"",
-      idNumber:"",
-      email: outsideForm.email.trim(),
-      phone: outsideForm.phone.trim(),
-      creditLimit:0,
-      creditBalance:0,
-      registered:true,
-      isEmployee:false,
-    };
-    setUsers(prev=>[...prev, newUser]);
-    setOutsideForm({ name:"", email:"", phone:"", password:"", confirmPassword:"" });
-    setOutsideError("");
-    setShowRegister(false);
-    setRegisterType(null);
   };
 
   /* ── CART ── */
@@ -635,26 +539,15 @@ export default function KFCanteen() {
   };
 
   /* ── MENU MGMT ── */
-  const addMenuItem = () => {
+  const addMenuItem = (day) => {
     if(!newItem.name||!newItem.price) return;
-    const days = newItem.days&&newItem.days.length ? newItem.days : [mgDay];
-    const weeks = newItem.weeks&&newItem.weeks.length ? newItem.weeks : [mgWeekKey];
-    setMenu(prev=>{
-      const next = {...prev};
-      weeks.forEach(weekKey=>{
-        next[weekKey] = {...(next[weekKey]||{})};
-        days.forEach(day=>{
-          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?parseFloat(newItem.grams):null };
-          next[weekKey][day] = [...(next[weekKey][day]||[]), item];
-        });
-      });
-      return next;
-    });
-    setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[]});
+    const item={ id:"m"+Date.now(), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?parseFloat(newItem.grams):null };
+    setMenu(prev=>({...prev,[day]:[...prev[day],item]}));
+    setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:""});
     setShowAddItem(null);
   };
-  const removeMenuItem = (weekKey,day,id) => setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].filter(i=>i.id!==id)}}));
-  const toggleAvail = (weekKey,day,id) => setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].map(i=>i.id===id?{...i,available:!i.available}:i)}}));
+  const removeMenuItem = (day,id) => setMenu(prev=>({...prev,[day]:prev[day].filter(i=>i.id!==id)}));
+  const toggleAvail = (day,id) => setMenu(prev=>({...prev,[day]:prev[day].map(i=>i.id===id?{...i,available:!i.available}:i)}));
 
   const confirmPayment = (orderId, paymentType) => {
     const order = orders.find(o=>o.id===orderId);
@@ -680,10 +573,9 @@ export default function KFCanteen() {
 
   const addOtherProduct = () => {
     if(!newProduct.name||!newProduct.price||!newProduct.stock) return;
-    const p = { id:"op"+Date.now(), name:newProduct.name, buyPrice:parseFloat(newProduct.buyPrice)||0, price:parseFloat(newProduct.price), emoji:newProduct.emoji||"🛍️", photo:newProduct.photo||null, isPhoto:!!newProduct.photo, category:newProduct.category||"Others", stock:parseInt(newProduct.stock), available:parseInt(newProduct.stock)>0 };
+    const p = { id:"op"+Date.now(), name:newProduct.name, buyPrice:parseFloat(newProduct.buyPrice)||0, price:parseFloat(newProduct.price), emoji:newProduct.emoji||"🛍️", category:newProduct.category||"Others", stock:parseInt(newProduct.stock), available:parseInt(newProduct.stock)>0 };
     setOtherProducts(prev=>[...prev, p]);
-    setNewProduct({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
-    setProductNameSuggestions([]);
+    setNewProduct({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"" });
     setShowAddProduct(false);
   };
   const removeOtherProduct = (id) => setOtherProducts(prev=>prev.filter(p=>p.id!==id));
@@ -694,29 +586,13 @@ export default function KFCanteen() {
     return {...p, stock:newStock, available: newStock>0};
   }));
 
-  const addReceipt = () => {
-    if(!newReceipt.photo) return;
-    setReceipts(prev=>[{
-      id:"rc"+Date.now(),
-      photo:newReceipt.photo,
-      date:newReceipt.date,
-      amount:newReceipt.amount?parseFloat(newReceipt.amount):null,
-      note:newReceipt.note,
-      by:currentUser.name,
-      uploadedAt: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
-    },...prev]);
-    setShowAddReceipt(false);
-    setNewReceipt({ photo:null, date:new Date().toISOString().slice(0,10), amount:"", note:"" });
-  };
-  const removeReceipt = (id) => setReceipts(prev=>prev.filter(r=>r.id!==id));
-
   /* ── FILTERED ITEMS ── */
   const visibleItems = useMemo(()=>{
-    let items = (menu[selectedWeekKey]&&menu[selectedWeekKey][selectedDay])||[];
+    let items = menu[selectedDay]||[];
     if(mealCat!=="ALL") items=items.filter(i=>i.cat===mealCat);
     if(searchQ.trim()) items=items.filter(i=>i.name.toLowerCase().includes(searchQ.toLowerCase()));
     return items;
-  },[menu,selectedWeekKey,selectedDay,mealCat,searchQ]);
+  },[menu,selectedDay,mealCat,searchQ]);
 
   const otherCats = ["All",...new Set(otherProducts.map(p=>p.category))];
   const visibleOthers = useMemo(()=>{
@@ -737,36 +613,8 @@ export default function KFCanteen() {
             <Icon name="utensils" size={26} color={PURPLE} />
           </div>
           <h1 style={{fontSize:22,fontWeight:700,color:"#1a1a2e",margin:"0 0 6px"}}>{showRegister?"Create Account":"Welcome Back"}</h1>
-          <p style={{color:"#9CA3AF",fontSize:13,margin:0}}>{showRegister?(registerType==="outside"?"Create your customer account":"Register as an employee"):"Sign in to order your meal"}</p>
+          <p style={{color:"#9CA3AF",fontSize:13,margin:0}}>{showRegister?"Register as an employee":"Sign in to order your meal"}</p>
         </div>
-
-        {/* Employee check modal */}
-        {showEmployeeCheck&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-            <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
-              <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Create Account</div>
-                <button onClick={()=>setShowEmployeeCheck(false)}
-                  style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-              </div>
-              <div style={{padding:"26px 22px",textAlign:"center"}}>
-                <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:22,lineHeight:1.5}}>
-                  Are you an employee of<br/><span style={{color:PURPLE}}>Kou Fu Color Printing Corporation</span>?
-                </div>
-                <div style={{display:"flex",gap:10}}>
-                  <button onClick={()=>{setRegisterType("outside");setShowRegister(true);setShowEmployeeCheck(false);}}
-                    style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:10,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:700}}>
-                    No
-                  </button>
-                  <button onClick={()=>{setRegisterType("employee");setShowRegister(true);setShowEmployeeCheck(false);}}
-                    style={{flex:1,background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:700}}>
-                    Yes
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {!showRegister ? (
           <>
@@ -791,61 +639,7 @@ export default function KFCanteen() {
             {loginError && <p style={{color:"#EF4444",fontSize:12,margin:"6px 0 0",display:"flex",alignItems:"center",gap:5}}>⚠️ {loginError}</p>}
             <button onClick={handleLogin} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:18}}>Sign In</button>
             <p style={{textAlign:"center",marginTop:16,fontSize:13,color:"#9CA3AF"}}>
-              Don't have an account? <span onClick={()=>{setShowEmployeeCheck(true);setLoginError("");}} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Create Account</span>
-            </p>
-          </>
-        ) : registerType==="outside" ? (
-          <>
-            {/* Outside customer — basic info registration */}
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Full Name</label>
-              <input value={outsideForm.name} onChange={e=>setOutsideForm(p=>({...p,name:e.target.value}))}
-                placeholder="Enter your full name"
-                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Email Address</label>
-              <input value={outsideForm.email} onChange={e=>setOutsideForm(p=>({...p,email:e.target.value}))}
-                placeholder="e.g. juan@email.com" type="email"
-                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Cellphone Number</label>
-              <input value={outsideForm.phone} onChange={e=>setOutsideForm(p=>({...p,phone:e.target.value}))}
-                placeholder="e.g. 09171234567" type="tel" maxLength={15}
-                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Create Password</label>
-              <div style={{position:"relative"}}>
-                <input type={outsideShowPass?"text":"password"} value={outsideForm.password}
-                  onChange={e=>setOutsideForm(p=>({...p,password:e.target.value}))} placeholder="Create a password"
-                  style={{width:"100%",padding:"11px 42px 11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
-                <button onClick={()=>setOutsideShowPass(p=>!p)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer"}}>
-                  <Icon name={outsideShowPass?"eyeoff":"eye"} size={18} color="#9CA3AF" />
-                </button>
-              </div>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Confirm Password</label>
-              <div style={{position:"relative"}}>
-                <input type={outsideShowConfirm?"text":"password"} value={outsideForm.confirmPassword}
-                  onChange={e=>setOutsideForm(p=>({...p,confirmPassword:e.target.value}))} placeholder="Re-enter your password"
-                  style={{width:"100%",padding:"11px 42px 11px 14px",borderRadius:10,border:outsideForm.confirmPassword?(outsideForm.password===outsideForm.confirmPassword?"1.5px solid #10B981":"1.5px solid #EF4444"):"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
-                <button onClick={()=>setOutsideShowConfirm(p=>!p)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer"}}>
-                  <Icon name={outsideShowConfirm?"eyeoff":"eye"} size={18} color="#9CA3AF" />
-                </button>
-              </div>
-              {outsideForm.confirmPassword&&(
-                <div style={{fontSize:11,marginTop:4,color:outsideForm.password===outsideForm.confirmPassword?"#059669":"#EF4444"}}>
-                  {outsideForm.password===outsideForm.confirmPassword?"✅ Passwords match":"❌ Passwords do not match"}
-                </div>
-              )}
-            </div>
-            {outsideError&&<p style={{color:"#EF4444",fontSize:12,margin:"4px 0 8px",display:"flex",alignItems:"center",gap:5}}>⚠️ {outsideError}</p>}
-            <button onClick={handleOutsideRegister} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:6}}>Complete Registration</button>
-            <p style={{textAlign:"center",marginTop:14,fontSize:13,color:"#9CA3AF"}}>
-              Already have an account? <span onClick={()=>{setShowRegister(false);setRegisterType(null);setOutsideError("");}} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Sign In</span>
+              Don't have an account? <span onClick={()=>{setShowRegister(true);setLoginError("");}} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Register as Employee</span>
             </p>
           </>
         ) : (
@@ -966,7 +760,7 @@ export default function KFCanteen() {
               <button onClick={handleRegister} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:6}}>Complete Registration</button>
             )}
             <p style={{textAlign:"center",marginTop:14,fontSize:13,color:"#9CA3AF"}}>
-              Already have an account? <span onClick={()=>{setShowRegister(false);setRegisterType(null);setRegisterError("");}} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Sign In</span>
+              Already have an account? <span onClick={()=>{setShowRegister(false);setRegisterError("");}} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Sign In</span>
             </p>
           </>
         )}
@@ -1508,74 +1302,19 @@ export default function KFCanteen() {
           <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
             <Icon name="manage" size={20} color={PURPLE} /> Manage Weekly Menu {(role==="staff"||role==="staff-admin")&&<span style={{fontSize:13,fontWeight:500,color:PURPLE,background:PURPLE_LIGHT,padding:"2px 10px",borderRadius:20,marginLeft:6}}>📍 {currentUser.plant}</span>}
           </h2>
-          <button onClick={()=>{setNewItem(p=>({...p,days:[mgDay],weeks:[mgWeekKey]}));setShowAddItem(mgDay);}} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>setShowAddItem(mgDay)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
             <Icon name="plus" size={14} color="#fff" /> Add Item
           </button>
         </div>
-        {/* date picker */}
-        <div style={{position:"relative",marginBottom:16,display:"inline-block"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"8px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-              <span>📅</span>
-              <span style={{fontWeight:600,fontSize:14,color:"#374151"}}>{mgDate.toLocaleDateString("en-PH",{weekday:"short",year:"numeric",month:"2-digit",day:"2-digit"})}</span>
-              {isSameDay(mgDate,TODAY_DATE)&&<span style={{fontSize:11,background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:10,fontWeight:600}}>Today</span>}
-            </div>
-            <button onClick={()=>setShowMgCal(p=>!p)}
-              style={{display:"flex",alignItems:"center",gap:6,background:showMgCal?PURPLE:"#fff",color:showMgCal?"#fff":PURPLE,border:"1.5px solid "+PURPLE,borderRadius:9,padding:"8px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
-              🗓 {showMgCal?"Close":"Change Date"}
+        {/* day tabs */}
+        <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+          {DAYS.map(day=>(
+            <button key={day} onClick={()=>setMgDay(day)}
+              style={{padding:"7px 18px",borderRadius:50,border:"1px solid #E5E7EB",background:mgDay===day?PURPLE:"#fff",color:mgDay===day?"#fff":"#374151",fontWeight:mgDay===day?700:400,fontSize:13,cursor:"pointer",position:"relative"}}>
+              {day.slice(0,3)}
+              {day===TODAY&&<span style={{position:"absolute",top:-3,right:-3,width:7,height:7,background:"#EF4444",borderRadius:"50%"}} />}
             </button>
-          </div>
-          {showMgCal&&(
-            <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,zIndex:100,background:"#fff",border:"1px solid #E5E7EB",borderRadius:12,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.12)",minWidth:280}}>
-              <div style={{background:PURPLE,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <button onClick={()=>{if(mgCalMonth===0){setMgCalMonth(11);setMgCalYear(y=>y-1);}else setMgCalMonth(m=>m-1);}}
-                  style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:6,width:28,height:28,cursor:"pointer",color:"#fff",fontSize:16}}>{"<"}</button>
-                <span style={{color:"#fff",fontWeight:700,fontSize:14}}>{new Date(mgCalYear,mgCalMonth).toLocaleDateString("en-PH",{month:"long",year:"numeric"})}</span>
-                <button onClick={()=>{if(mgCalMonth===11){setMgCalMonth(0);setMgCalYear(y=>y+1);}else setMgCalMonth(m=>m+1);}}
-                  style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:6,width:28,height:28,cursor:"pointer",color:"#fff",fontSize:16}}>{">"}</button>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:"#F9FAFB",borderBottom:"1px solid #E5E7EB"}}>
-                {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div key={d} style={{textAlign:"center",padding:"6px 0",fontSize:11,fontWeight:700,color:d==="Su"?"#EF4444":"#6B7280"}}>{d}</div>)}
-              </div>
-              <div style={{padding:"4px 6px 8px"}}>
-                {(()=>{
-                  const firstDay=new Date(mgCalYear,mgCalMonth,1).getDay();
-                  const daysInMonth=new Date(mgCalYear,mgCalMonth+1,0).getDate();
-                  const daysInPrev=new Date(mgCalYear,mgCalMonth,0).getDate();
-                  const cells=[];
-                  for(let i=0;i<firstDay;i++) cells.push({day:daysInPrev-firstDay+1+i,type:"prev"});
-                  for(let d=1;d<=daysInMonth;d++) cells.push({day:d,type:"curr"});
-                  const rem=42-cells.length;
-                  for(let i=1;i<=rem;i++) cells.push({day:i,type:"next"});
-                  const weeks=[];
-                  for(let w=0;w<cells.length/7;w++) weeks.push(cells.slice(w*7,(w+1)*7));
-                  return weeks.map((week,wi)=>(
-                    <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
-                      {week.map((cell,ci)=>{
-                        if(cell.type!=="curr") return <div key={ci} style={{textAlign:"center",padding:"6px 2px",fontSize:12,color:"#D1D5DB"}}>{cell.day}</div>;
-                        const cd=new Date(mgCalYear,mgCalMonth,cell.day);
-                        const isSel=isSameDay(cd,mgDate);
-                        const isT=isSameDay(cd,TODAY_DATE);
-                        const isSun=cd.getDay()===0;
-                        return(
-                          <div key={ci} onClick={()=>{if(!isSun){setMgDate(cd);setMgDay(DAY_NAMES[cd.getDay()]);setShowMgCal(false);}}}
-                            style={{textAlign:"center",padding:"5px 2px",cursor:isSun?"not-allowed":"pointer",opacity:isSun?0.35:1}}>
-                            <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:"50%",fontSize:13,fontWeight:(isSel||isT)?700:400,background:isSel?PURPLE:isT?PURPLE_LIGHT:"transparent",color:isSel?"#fff":isSun?"#EF4444":"#374151",border:isT&&!isSel?"1.5px solid "+PURPLE:"none"}}>{cell.day}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ));
-                })()}
-              </div>
-              <div style={{borderTop:"1px solid #E5E7EB",padding:"8px",textAlign:"center"}}>
-                <button onClick={()=>{setMgDate(new Date(TODAY_DATE));setMgDay(TODAY);setMgCalYear(TODAY_DATE.getFullYear());setMgCalMonth(TODAY_DATE.getMonth());setShowMgCal(false);}}
-                  style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:PURPLE,fontWeight:600}}>
-                  Today: {TODAY_DATE.toLocaleDateString("en-PH",{month:"2-digit",day:"2-digit",year:"numeric"})}
-                </button>
-              </div>
-            </div>
-          )}
+          ))}
         </div>
         {/* ── ADD ITEM MODAL ── */}
         {showAddItem===mgDay&&(
@@ -1584,55 +1323,12 @@ export default function KFCanteen() {
               <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Menu Item</div>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>
-                    {(newItem.days&&newItem.days.length?newItem.days.join(", "):mgDay)} · Week {(newItem.weeks&&newItem.weeks.length?newItem.weeks:[mgWeekKey]).map(wk=>wk.split("-")[1]).join(", ")} · {newItem.cat}
-                  </div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>{mgDay} · {newItem.cat}</div>
                 </div>
-                <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[]});}}
+                <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:""});}}
                   style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
               </div>
               <div style={{padding:"22px"}}>
-                <div style={{marginBottom:18}}>
-                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Add to Week(s)</label>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {[0,1,2,3,4].map(i=>{
-                      const d = new Date(mgDate); d.setDate(d.getDate()+i*7);
-                      const wk = getWeekKey(d);
-                      const wn = getWeekNumber(d);
-                      const isSel = (newItem.weeks||[]).includes(wk);
-                      return (
-                        <button key={wk} type="button"
-                          onClick={()=>setNewItem(p=>{
-                            const cur = p.weeks||[];
-                            return {...p, weeks: cur.includes(wk) ? cur.filter(x=>x!==wk) : [...cur,wk]};
-                          })}
-                          style={{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(isSel?PURPLE:"#E5E7EB"),background:isSel?PURPLE:"#fff",color:isSel?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
-                          Week {wn}{i===0?" (This Week)":""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Identified by traditional calendar week number. Select multiple weeks to add the same item to each.</div>
-                </div>
-                <div style={{marginBottom:18}}>
-                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Add to Day(s)</label>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {DAYS.map(d=>{
-                      const isSel = (newItem.days||[]).includes(d);
-                      return (
-                        <button key={d} type="button"
-                          onClick={()=>setNewItem(p=>{
-                            const cur = p.days||[];
-                            return {...p, days: cur.includes(d) ? cur.filter(x=>x!==d) : [...cur,d]};
-                          })}
-                          style={{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(isSel?PURPLE:"#E5E7EB"),background:isSel?PURPLE:"#fff",color:isSel?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                          {d.slice(0,3)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Item will be added to the selected week(s) × day(s) combination.</div>
-                </div>
                 <div style={{marginBottom:18}}>
                   <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Item Photo</label>
                   <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
@@ -1684,27 +1380,19 @@ export default function KFCanteen() {
                   </div>
                 </div>
                 <div style={{display:"flex",gap:10,marginTop:4}}>
-                  <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[]});}}
+                  <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:""});}}
                     style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                  {(()=>{
-                    const dayCount = newItem.days&&newItem.days.length?newItem.days.length:1;
-                    const weekCount = newItem.weeks&&newItem.weeks.length?newItem.weeks.length:1;
-                    const total = dayCount*weekCount;
-                    const canSubmit = newItem.name&&newItem.price;
-                    return (
-                      <button onClick={addMenuItem} disabled={!canSubmit}
-                        style={{flex:2,background:canSubmit?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:canSubmit?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                        <Icon name="plus" size={15} color="#fff" /> Add to {total} Slot{total>1?"s":""}
-                      </button>
-                    );
-                  })()}
+                  <button onClick={()=>addMenuItem(mgDay)} disabled={!newItem.name||!newItem.price}
+                    style={{flex:2,background:newItem.name&&newItem.price?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newItem.name&&newItem.price?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                    <Icon name="plus" size={15} color="#fff" /> Add to {mgDay}
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         )}
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {((menu[mgWeekKey]&&menu[mgWeekKey][mgDay])||[]).map(item=>(
+          {(menu[mgDay]||[]).map(item=>(
             <div key={item.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,opacity:item.available?1:0.6}}>
               <div style={{width:52,height:52,borderRadius:10,background:PURPLE_LIGHT,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {item.isPhoto&&item.img ? <img src={item.img} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : <span style={{fontSize:26}}>{item.img}</span>}
@@ -1716,13 +1404,13 @@ export default function KFCanteen() {
               <span style={{fontSize:11,background:item.available?"#D1FAE5":"#FEE2E2",color:item.available?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600}}>
                 {item.available?"Available":"Unavailable"}
               </span>
-              <button onClick={()=>toggleAvail(mgWeekKey,mgDay,item.id)} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontSize:12,color:"#374151",fontWeight:500}}>Toggle</button>
-              {(role==="admin"||role==="staff-admin")&&<button onClick={()=>removeMenuItem(mgWeekKey,mgDay,item.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
+              <button onClick={()=>toggleAvail(mgDay,item.id)} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontSize:12,color:"#374151",fontWeight:500}}>Toggle</button>
+              {(role==="admin"||role==="staff-admin")&&<button onClick={()=>removeMenuItem(mgDay,item.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
                 <Icon name="trash" size={13} color="#991B1B" /> Remove
               </button>}
             </div>
           ))}
-          {((menu[mgWeekKey]&&menu[mgWeekKey][mgDay])||[]).length===0&&<Empty msg={`No items for ${mgDay}, Week ${mgWeekNumber}`} sub="Click '+ Add Item' to add one." />}
+          {(menu[mgDay]||[]).length===0&&<Empty msg={`No items for ${mgDay}`} sub="Click '+ Add Item' to add one." />}
         </div>
       </div>
       );
@@ -1758,16 +1446,9 @@ export default function KFCanteen() {
                   </div>
                   {/* show credit balance if available */}
                   {(()=>{const u=users.find(uu=>uu.name===paymentModal.userName); return u?(
-                    <div style={{borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,border:"1px solid "+(u.creditBalance<paymentModal.orderTotal?"#FCD34D":"#A7F3D0"),background:u.creditBalance<paymentModal.orderTotal?"#FEF3C7":"#F0FDF4",color:u.creditBalance<paymentModal.orderTotal?"#92400E":"#065F46"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <span>💳 Credit Balance</span>
-                        <span style={{fontWeight:700,fontSize:15}}>₱{(u.creditBalance||0).toLocaleString()}</span>
-                      </div>
-                      {u.creditBalance<paymentModal.orderTotal&&(
-                        <div style={{marginTop:6,fontSize:12,fontWeight:600,color:"#EF4444",display:"flex",alignItems:"center",gap:4}}>
-                          ⚠️ Insufficient! Short by ₱{(paymentModal.orderTotal-(u.creditBalance||0)).toLocaleString()} — Credit is disabled
-                        </div>
-                      )}
+                    <div style={{background:u.creditBalance<paymentModal.orderTotal?"#FEF3C7":"#F0FDF4",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:u.creditBalance<paymentModal.orderTotal?"#92400E":"#065F46",display:"flex",justifyContent:"space-between"}}>
+                      <span>💳 Credit Balance</span>
+                      <span style={{fontWeight:700}}>₱{u.creditBalance?.toLocaleString()}</span>
                     </div>
                   ):null;})()}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -1777,22 +1458,17 @@ export default function KFCanteen() {
                       <span>Cash</span>
                       <span style={{fontSize:11,fontWeight:400,color:"#6B7280"}}>No credit deduction</span>
                     </button>
-                    {(()=>{
-                      const u=users.find(uu=>uu.name===paymentModal.userName);
-                      const insufficient = u&&u.creditBalance<paymentModal.orderTotal;
-                      return(
-                        <button
-                          onClick={()=>{ if(insufficient) return; confirmPayment(paymentModal.orderId,"Credit"); }}
-                          disabled={!!insufficient}
-                          style={{background:insufficient?"#F3F4F6":PURPLE_LIGHT,color:insufficient?"#9CA3AF":PURPLE,border:"2px solid "+(insufficient?"#E5E7EB":PURPLE+"44"),borderRadius:12,padding:"18px 12px",cursor:insufficient?"not-allowed":"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6,opacity:insufficient?0.7:1}}>
-                          <span style={{fontSize:28}}>💳</span>
-                          <span>Credit</span>
-                          <span style={{fontSize:11,fontWeight:400,color:insufficient?"#EF4444":"#6B7280"}}>
-                            {insufficient?"Not enough balance":"Deducts from balance"}
-                          </span>
-                        </button>
-                      );
-                    })()}
+                    <button
+                      onClick={()=>{
+                        const u=users.find(uu=>uu.name===paymentModal.userName);
+                        if(u&&u.creditBalance<paymentModal.orderTotal){alert(`Insufficient credit! Balance: ₱${u.creditBalance}`);return;}
+                        confirmPayment(paymentModal.orderId,"Credit");
+                      }}
+                      style={{background:PURPLE_LIGHT,color:PURPLE,border:`2px solid ${PURPLE}44`,borderRadius:12,padding:"18px 12px",cursor:"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:28}}>💳</span>
+                      <span>Credit</span>
+                      <span style={{fontSize:11,fontWeight:400,color:"#6B7280"}}>Deducts from balance</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1851,66 +1527,51 @@ export default function KFCanteen() {
             </div>
           )}
 
-          {filteredOrders.length===0 ? (
-            <Empty msg="No orders found" sub="Try a different name or order ID." />
-          ) : (
-            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                <thead>
-                  <tr style={{background:"#F9FAFB"}}>
-                    {["Order ID","Customer","Plant","Items","Total","Time","Status","Action"].map(h=>(
-                      <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredOrders.slice().sort((a,b)=>{
-                    // Priority 1: Unpaid (needs Collect Payment) — always on top
-                    // Priority 2: Paid — bottom
-                    const pa = a.paymentType ? 1 : 0;
-                    const pb = b.paymentType ? 1 : 0;
-                    if(pa!==pb) return pa-pb;
-                    return (a.time||"").localeCompare(b.time||"");
-                  }).map(order=>(
-                    <tr key={order.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                      <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
-                      <td style={{padding:"11px 14px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>{order.user}</td>
-                      <td style={{padding:"11px 14px"}}>
-                        {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
-                      </td>
-                      <td style={{padding:"11px 14px",color:"#6B7280",minWidth:180}}>
-                        {order.items.map((it,i)=>(
-                          <div key={i} style={{fontSize:12,lineHeight:1.7,whiteSpace:"nowrap"}}>
-                            {it.name} ×{it.qty}
-                            {it.scheduledDate&&<span style={{marginLeft:6,fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 6px",borderRadius:8}}>📅 {it.scheduledDate}</span>}
-                          </div>
-                        ))}
-                      </td>
-                      <td style={{padding:"11px 14px",fontWeight:700,color:PURPLE,whiteSpace:"nowrap"}}>₱{order.total}</td>
-                      <td style={{padding:"11px 14px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
-                      <td style={{padding:"11px 14px"}}>
-                        {order.paymentType
-                          ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>
-                              {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
-                            </span>
-                          : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
-                        }
-                      </td>
-                      <td style={{padding:"11px 14px"}}>
-                        {!order.paymentType
-                          ? <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
-                              style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                              💰 Collect
-                            </button>
-                          : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
-                        }
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {filteredOrders.length===0&&<Empty msg="No orders found" sub="Try a different name or order ID." />}
+            {filteredOrders.map(order=>(
+              <div key={order.id} style={{background:"#fff",borderRadius:14,border:`1px solid ${order.paymentType?"#D1FAE5":"#E5E7EB"}`,padding:"16px 18px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:15,color:"#111"}}>{order.user}</div>
+                    <div style={{fontSize:12,color:"#9CA3AF",display:"flex",alignItems:"center",gap:8,marginTop:2}}>
+                      <span>#{order.id} · {order.time}</span>
+                      {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontWeight:600,fontSize:11,padding:"1px 7px",borderRadius:8}}>{order.plant}</span>}
+                    </div>
+                  </div>
+                  {order.paymentType
+                    ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>
+                        {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
+                      </span>
+                    : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>⏳ Unpaid</span>
+                  }
+                </div>
+                {order.items.map((it,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#374151",padding:"3px 0",alignItems:"flex-start"}}>
+                    <div>
+                      <span>{it.name} × {it.qty}</span>
+                      {it.scheduledDate&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>📅 {it.scheduledDate}</span>}
+                      {it.grams&&<span style={{fontSize:11,color:"#9CA3AF",marginLeft:6}}>⚖️ {it.grams}g/serving</span>}
+                    </div>
+                    <span style={{fontWeight:600,flexShrink:0}}>₱{it.price*it.qty}</span>
+                  </div>
+                ))}
+                <div style={{borderTop:"1px solid #F3F4F6",marginTop:10,paddingTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontWeight:700,fontSize:15,color:PURPLE}}>₱{order.total}</span>
+                  {!order.paymentType
+                    ? <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
+                        style={{background:PURPLE,color:"#fff",border:"none",borderRadius:8,padding:"7px 18px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                        💰 Collect Payment
+                      </button>
+                    : <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#6B7280"}}>
+                        <span>✅ Paid via</span>
+                        <span style={{fontWeight:700,color:order.paymentType==="Credit"?PURPLE:"#059669"}}>{order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}</span>
+                      </div>
+                  }
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
@@ -2026,9 +1687,7 @@ export default function KFCanteen() {
               const oos = p.stock<=0;
               return (
                 <div key={p.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,opacity:oos?0.7:1}}>
-                  <div style={{width:52,height:52,borderRadius:10,background:PURPLE_LIGHT,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>
-                    {p.isPhoto&&p.photo ? <img src={p.photo} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : p.emoji}
-                  </div>
+                  <div style={{width:52,height:52,borderRadius:10,background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>{p.emoji}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{p.name}</div>
                     <div style={{fontSize:12,color:"#6B7280",display:"flex",gap:8,flexWrap:"wrap",marginTop:2}}>
@@ -2067,65 +1726,22 @@ export default function KFCanteen() {
               <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
                 <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Other Product</div>
-                  <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
+                  <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",price:"",emoji:"🛍️",category:"Others",stock:""}); }}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                 </div>
                 <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
-                  {/* photo dropzone */}
-                  <div>
-                    <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Product Photo</label>
-                    <div onDragOver={e=>{e.preventDefault();setProductDragOver(true);}} onDragLeave={()=>setProductDragOver(false)}
-                      onDrop={e=>{e.preventDefault();setProductDragOver(false);handleProductPhotoFile(e.dataTransfer.files[0]);}}
-                      onClick={()=>productPhotoInputRef.current?.click()}
-                      style={{border:`2px dashed ${productDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:productDragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",position:"relative",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                      {newProduct.photo ? (
-                        <><img src={newProduct.photo} alt="preview" style={{maxHeight:96,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
-                          <button onClick={e=>{e.stopPropagation();setNewProduct(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                        </>
-                      ) : (
-                        <><div style={{width:40,height:40,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="products" size={18} color={PURPLE} /></div>
-                          <div style={{fontSize:12,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
-                            <input value={newProduct.emoji} onChange={e=>setNewProduct(p=>({...p,emoji:e.target.value}))} onClick={e=>e.stopPropagation()}
-                              style={{width:48,fontSize:18,borderRadius:8,border:"1px solid #E5E7EB",padding:"3px 5px",textAlign:"center",background:"#fff"}} />
-                          </div>
-                        </>
-                      )}
-                      <input ref={productPhotoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleProductPhotoFile(e.target.files[0])} />
+                  {/* emoji + name row */}
+                  <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+                    <div>
+                      <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Emoji</label>
+                      <input value={newProduct.emoji} onChange={e=>setNewProduct(p=>({...p,emoji:e.target.value}))}
+                        style={{width:56,fontSize:24,borderRadius:9,border:"1.5px solid #E5E7EB",padding:"8px 6px",textAlign:"center",background:"#FAFAFA"}} />
                     </div>
-                  </div>
-                  {/* name with suggestions */}
-                  <div style={{position:"relative"}}>
-                    <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Product Name</label>
-                    <input value={newProduct.name}
-                      onChange={e=>{
-                        const v=e.target.value; setNewProduct(p=>({...p,name:v}));
-                        if(v.trim().length>=2) setProductNameSuggestions(otherProducts.filter(p=>p.name.toLowerCase().includes(v.toLowerCase())));
-                        else setProductNameSuggestions([]);
-                      }}
-                      onBlur={()=>setTimeout(()=>setProductNameSuggestions([]),150)}
-                      placeholder="e.g. Nova Chips" autoComplete="off"
-                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                    {productNameSuggestions.length>0&&(
-                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:250,overflow:"hidden",marginTop:2}}>
-                        {productNameSuggestions.map(p=>(
-                          <button key={p.id} onMouseDown={()=>{setNewProduct(prev=>({...prev,name:p.name}));setProductNameSuggestions([]);}}
-                            style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 12px",border:"none",borderBottom:"1px solid #F3F4F6",background:"none",cursor:"pointer",textAlign:"left"}}>
-                            <span style={{fontSize:18}}>{p.emoji}</span>
-                            <span style={{flex:1}}>
-                              <div style={{fontSize:13,fontWeight:600,color:"#111"}}>{p.name}</div>
-                              <div style={{fontSize:11,color:"#6B7280"}}>{p.category} · {p.stock} in stock</div>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {newProduct.name.trim()&&otherProducts.some(p=>p.name.toLowerCase()===newProduct.name.trim().toLowerCase())&&(
-                      <div style={{marginTop:6,fontSize:11,color:"#92400E",background:"#FEF3C7",borderRadius:7,padding:"6px 10px"}}>
-                        ⚠️ "{newProduct.name.trim()}" already exists in the system.
-                      </div>
-                    )}
+                    <div style={{flex:1}}>
+                      <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Product Name</label>
+                      <input value={newProduct.name} onChange={e=>setNewProduct(p=>({...p,name:e.target.value}))} placeholder="e.g. Nova Chips"
+                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    </div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                     <div>
@@ -2159,7 +1775,7 @@ export default function KFCanteen() {
                       style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
                   </div>
                   <div style={{display:"flex",gap:10,marginTop:4}}>
-                    <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
+                    <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",price:"",emoji:"🛍️",category:"Others",stock:""}); }}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
                     <button onClick={addOtherProduct} disabled={!newProduct.name||!newProduct.price||!newProduct.stock}
                       style={{flex:2,background:newProduct.name&&newProduct.price&&newProduct.stock?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newProduct.name&&newProduct.price&&newProduct.stock?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
@@ -2174,149 +1790,10 @@ export default function KFCanteen() {
       );
     }
 
-    /* ── RECEIPTS (staff-admin) ── */
-    if(activeTab==="receipts") {
-      const sortedReceipts = [...receipts].sort((a,b)=> new Date(b.date)-new Date(a.date));
-      const totalAmount = receipts.reduce((s,r)=>s+(r.amount||0),0);
-      return (
-        <div>
-          {/* header */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
-            <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
-              <Icon name="receipt" size={20} color={PURPLE} /> Receipts
-            </h2>
-            {role==="staff-admin"&&(
-              <button onClick={()=>{setNewReceipt({photo:null,date:new Date().toISOString().slice(0,10),amount:"",note:""});setShowAddReceipt(true);}}
-                style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-                <Icon name="plus" size={14} color="#fff" /> Add Receipt
-              </button>
-            )}
-          </div>
-
-          {/* summary stats */}
-          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:110}}>
-              <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{receipts.length}</span>
-              <span style={{fontSize:11,color:"#6B7280",fontWeight:600,textAlign:"center"}}>Total Receipts</span>
-            </div>
-            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:110}}>
-              <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>₱{totalAmount.toFixed(2)}</span>
-              <span style={{fontSize:11,color:"#6B7280",fontWeight:600,textAlign:"center"}}>Total Amount</span>
-            </div>
-          </div>
-
-          {/* receipt cards */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))",gap:12}}>
-            {sortedReceipts.map(r=>(
-              <div key={r.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-                <div onClick={()=>setViewReceipt(r)} style={{cursor:"pointer",height:130,background:"#F9FAFB",overflow:"hidden"}}>
-                  <img src={r.photo} alt="receipt" style={{width:"100%",height:"100%",objectFit:"cover"}} />
-                </div>
-                <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"#111"}}>
-                    {new Date(r.date+"T00:00:00").toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})}
-                  </div>
-                  {r.amount!=null&&<div style={{fontSize:12,color:"#059669",fontWeight:600}}>₱{r.amount.toFixed(2)}</div>}
-                  {r.note&&<div style={{fontSize:12,color:"#6B7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.note}</div>}
-                  <div style={{fontSize:11,color:"#9CA3AF"}}>by {r.by}</div>
-                  <button onClick={()=>removeReceipt(r.id)} style={{marginTop:4,background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,color:"#991B1B",fontSize:11,fontWeight:500}}>
-                    <Icon name="trash" size={12} color="#991B1B" /> Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {sortedReceipts.length===0&&<Empty msg="No receipts yet" sub="Attach a photo of a purchase receipt to get started." />}
-
-          {/* ADD RECEIPT MODAL */}
-          {showAddReceipt&&role==="staff-admin"&&(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
-                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Receipt</div>
-                  <button onClick={()=>setShowAddReceipt(false)}
-                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                </div>
-                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Receipt Photo</label>
-                    <div onDragOver={e=>{e.preventDefault();setReceiptDragOver(true);}} onDragLeave={()=>setReceiptDragOver(false)}
-                      onDrop={e=>{e.preventDefault();setReceiptDragOver(false);handleReceiptPhotoFile(e.dataTransfer.files[0]);}}
-                      onClick={()=>receiptPhotoInputRef.current?.click()}
-                      style={{border:`2px dashed ${receiptDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.5rem",textAlign:"center",cursor:"pointer",background:receiptDragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",position:"relative",minHeight:160,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-                      {newReceipt.photo ? (
-                        <><img src={newReceipt.photo} alt="preview" style={{maxHeight:130,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
-                          <button onClick={e=>{e.stopPropagation();setNewReceipt(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                        </>
-                      ) : (
-                        <><div style={{width:48,height:48,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}><Icon name="receipt" size={22} color={PURPLE} /></div>
-                          <div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
-                          <div style={{fontSize:12,color:"#9CA3AF"}}>JPG, PNG, WEBP supported</div>
-                        </>
-                      )}
-                      <input ref={receiptPhotoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleReceiptPhotoFile(e.target.files[0])} />
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                    <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Date</label>
-                      <input value={newReceipt.date} onChange={e=>setNewReceipt(p=>({...p,date:e.target.value}))} type="date"
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                    </div>
-                    <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Amount (₱)</label>
-                      <input value={newReceipt.amount} onChange={e=>setNewReceipt(p=>({...p,amount:e.target.value}))} placeholder="Optional" type="number" min="0" step="0.01"
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Note</label>
-                    <input value={newReceipt.note} onChange={e=>setNewReceipt(p=>({...p,note:e.target.value}))} placeholder="e.g. Stock restock for chips"
-                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                  </div>
-                  <div style={{display:"flex",gap:10,marginTop:4}}>
-                    <button onClick={()=>setShowAddReceipt(false)}
-                      style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                    <button onClick={addReceipt} disabled={!newReceipt.photo}
-                      style={{flex:2,background:newReceipt.photo?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newReceipt.photo?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                      <Icon name="plus" size={15} color="#fff" /> Save Receipt
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* VIEW RECEIPT MODAL */}
-          {viewReceipt&&(
-            <div onClick={()=>setViewReceipt(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
-                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>
-                    {new Date(viewReceipt.date+"T00:00:00").toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"})}
-                  </div>
-                  <button onClick={()=>setViewReceipt(null)}
-                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                </div>
-                <img src={viewReceipt.photo} alt="receipt full" style={{width:"100%",maxHeight:420,objectFit:"contain",background:"#F9FAFB"}} />
-                <div style={{padding:"16px 22px",display:"flex",flexDirection:"column",gap:6}}>
-                  {viewReceipt.amount!=null&&<div style={{fontSize:14,color:"#059669",fontWeight:700}}>₱{viewReceipt.amount.toFixed(2)}</div>}
-                  {viewReceipt.note&&<div style={{fontSize:13,color:"#374151"}}>{viewReceipt.note}</div>}
-                  <div style={{fontSize:12,color:"#9CA3AF"}}>Uploaded by {viewReceipt.by} · {viewReceipt.uploadedAt}</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
     /* ── PERSONNEL (admin) ── */
     if(activeTab==="personnel") {
-      const employees = users.filter(u=>u.isEmployee!==false);
-      const outsideCustomers = users.filter(u=>u.isEmployee===false);
-      const unregistered = employees.filter(u=>!u.registered);
-      const registered = employees.filter(u=>u.registered);
+      const unregistered = users.filter(u=>!u.registered);
+      const registered = users.filter(u=>u.registered);
       const searchTerm = personnelSearch==="unregistered" ? "" : personnelSearch;
       const filteredUsers = (personnelSearch==="unregistered"?unregistered:registered).filter(u=>
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -2324,198 +1801,8 @@ export default function KFCanteen() {
         (u.plant||"").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.idNumber||"").toLowerCase().includes(searchTerm.toLowerCase())
       );
-      const filteredCustomers = outsideCustomers.filter(u=>
-        u.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        u.username.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        (u.email||"").toLowerCase().includes(customerSearch.toLowerCase()) ||
-        (u.phone||"").toLowerCase().includes(customerSearch.toLowerCase())
-      );
       return (
         <div>
-          {/* Import Excel Modal */}
-          {showImportModal&&(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:560,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
-                {/* Header */}
-                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>📥 Import Employees via Excel</div>
-                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Upload .xlsx file to bulk-add unregistered employees</div>
-                  </div>
-                  <button onClick={()=>setShowImportModal(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
-                </div>
-
-                <div style={{padding:"22px",overflowY:"auto",flex:1}}>
-                  {/* Download Template */}
-                  <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"14px 16px",marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <div style={{fontWeight:600,fontSize:13,color:PURPLE}}>Step 1: Download the template</div>
-                      <div style={{fontSize:12,color:"#6B7280",marginTop:2}}>Fill in employee details and save as .xlsx</div>
-                    </div>
-                    <button onClick={()=>{
-                      var wb = null;
-                      function doDownload() {
-                        wb = window.XLSX.utils.book_new();
-                        var wsData = [
-                          ["id_number","name","plant","role"],
-                          ["KF-24-0001","Juan dela Cruz","KF-Main","user"],
-                          ["CT-24-0002","Maria Santos","Colortree","user"],
-                          ["KG-24-0003","Paulo Fernandez","KF-Global","user"],
-                        ];
-                        var ws = window.XLSX.utils.aoa_to_sheet(wsData);
-                        ws["!cols"] = [{wch:14},{wch:24},{wch:14},{wch:10}];
-                        window.XLSX.utils.book_append_sheet(wb, ws, "Employees");
-                        window.XLSX.writeFile(wb, "KFCanteen_Employee_Template.xlsx");
-                      }
-                      if(window.XLSX){ doDownload(); return; }
-                      var s=document.createElement("script");
-                      s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-                      s.onload=doDownload;
-                      document.head.appendChild(s);
-                    }} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:600,flexShrink:0}}>
-                      ⬇️ Download Template
-                    </button>
-                  </div>
-
-                  {/* Column guide */}
-                  <div style={{background:"#F9FAFB",borderRadius:10,padding:"12px 16px",marginBottom:18,fontSize:12}}>
-                    <div style={{fontWeight:700,color:"#374151",marginBottom:8}}>📋 Required Columns:</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                      {[
-                        {col:"id_number", desc:"Employee ID (e.g. KF-24-0001)", req:true},
-                        {col:"name", desc:"Full name of employee", req:true},
-                        {col:"plant", desc:"KF-Main / Colortree / KF-Global", req:true},
-                        {col:"role", desc:"user / staff / staff-admin / admin", req:false},
-                      ].map(c=>(
-                        <div key={c.col} style={{display:"flex",gap:6,alignItems:"flex-start"}}>
-                          <span style={{fontFamily:"monospace",background:"#E5E7EB",padding:"1px 6px",borderRadius:4,fontSize:11,flexShrink:0,color:"#374151"}}>{c.col}</span>
-                          <span style={{color:"#6B7280"}}>{c.desc} {c.req&&<span style={{color:"#EF4444"}}>*</span>}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Role defaults to "user" if empty.</div>
-                  </div>
-
-                  {/* Upload area */}
-                  <div style={{marginBottom:16}}>
-                    <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:8}}>Step 2: Upload your filled file</div>
-                    <label style={{display:"block",border:"2px dashed #D1D5DB",borderRadius:10,padding:"24px",textAlign:"center",cursor:"pointer",background:"#F9FAFB",transition:"border-color 0.2s"}}>
-                      <div style={{fontSize:28,marginBottom:8}}>📂</div>
-                      <div style={{fontWeight:600,fontSize:13,color:"#374151"}}>Click to upload .xlsx file</div>
-                      <div style={{fontSize:12,color:"#9CA3AF",marginTop:4}}>Only .xlsx files are supported</div>
-                      <input type="file" accept=".xlsx" style={{display:"none"}} onChange={e=>{
-                        var file = e.target.files[0];
-                        if(!file) return;
-                        setImportError("");
-                        function processFile() {
-                          var reader = new FileReader();
-                          reader.onload = function(ev) {
-                            try {
-                              var wb = window.XLSX.read(ev.target.result, {type:"binary"});
-                              var ws = wb.Sheets[wb.SheetNames[0]];
-                              var rows = window.XLSX.utils.sheet_to_json(ws, {defval:""});
-                              if(!rows.length){ setImportError("File is empty or unreadable."); return; }
-                              var valid = [], errors = [];
-                              rows.forEach(function(row, i) {
-                                var idNum = String(row.id_number||"").trim();
-                                var name = String(row.name||"").trim();
-                                var plant = String(row.plant||"").trim();
-                                var role = String(row.role||"user").trim()||"user";
-                                if(!idNum||!name||!plant){ errors.push("Row "+(i+2)+": missing required field"); return; }
-                                if(!["KF-Main","Colortree","KF-Global"].includes(plant)){ errors.push("Row "+(i+2)+": invalid plant '"+plant+"'"); return; }
-                                if(!["user","staff","staff-admin","admin"].includes(role)) role="user";
-                                valid.push({idNumber:idNum, name, plant, role, registered:false});
-                              });
-                              if(errors.length) { setImportError(errors.slice(0,3).join("\n")+(errors.length>3?"\n...and "+(errors.length-3)+" more":"")); }
-                              setImportPreview(valid);
-                            } catch(err) {
-                              setImportError("Could not read file. Make sure it is a valid .xlsx file.");
-                            }
-                          };
-                          reader.readAsBinaryString(file);
-                        }
-                        if(window.XLSX){ processFile(); return; }
-                        var s=document.createElement("script");
-                        s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-                        s.onload=processFile;
-                        document.head.appendChild(s);
-                      }} />
-                    </label>
-                  </div>
-
-                  {/* Error */}
-                  {importError&&(
-                    <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#991B1B",whiteSpace:"pre-line"}}>
-                      ⚠️ {importError}
-                    </div>
-                  )}
-
-                  {/* Preview */}
-                  {importPreview.length>0&&(
-                    <div>
-                      <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:8}}>
-                        ✅ {importPreview.length} employee{importPreview.length>1?"s":""} ready to import
-                      </div>
-                      <div style={{border:"1px solid #E5E7EB",borderRadius:10,overflow:"hidden",maxHeight:200,overflowY:"auto"}}>
-                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                          <thead>
-                            <tr style={{background:"#F9FAFB"}}>
-                              {["ID Number","Name","Plant","Role"].map(h=>(
-                                <th key={h} style={{padding:"8px 12px",textAlign:"left",fontWeight:600,color:"#6B7280",borderBottom:"1px solid #E5E7EB"}}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {importPreview.map((e,i)=>(
-                              <tr key={i} style={{borderBottom:"1px solid #F3F4F6"}}>
-                                <td style={{padding:"7px 12px",fontFamily:"monospace",color:"#374151"}}>{e.idNumber}</td>
-                                <td style={{padding:"7px 12px",fontWeight:600,color:"#111"}}>{e.name}</td>
-                                <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.plant}</td>
-                                <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500}}>{e.role}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div style={{padding:"14px 22px",borderTop:"1px solid #E5E7EB",display:"flex",gap:10,flexShrink:0}}>
-                  <button onClick={()=>setShowImportModal(false)} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                  <button disabled={importPreview.length===0} onClick={()=>{
-                    var added = 0;
-                    importPreview.forEach(function(emp) {
-                      var exists = users.some(function(u){ return u.idNumber===emp.idNumber||u.name===emp.name; });
-                      if(!exists){
-                        setUsers(prev=>[...prev,{
-                          id:"u"+Date.now()+Math.random(),
-                          username:"",password:"",
-                          role:emp.role,
-                          name:emp.name,
-                          avatar:emp.name.split(" ").map(function(w){return w[0];}).join("").slice(0,2).toUpperCase(),
-                          plant:emp.plant,
-                          idNumber:emp.idNumber,
-                          phone:"",
-                          creditLimit:500,
-                          creditBalance:500,
-                          registered:false,
-                          isEmployee:true,
-                        }]);
-                        added++;
-                      }
-                    });
-                    setShowImportModal(false);
-                    setImportPreview([]);
-                  }} style={{flex:2,background:importPreview.length>0?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:importPreview.length>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-                    Import {importPreview.length>0?importPreview.length+" Employee"+(importPreview.length>1?"s":""):""}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Add Employee Modal - Bulk Entry */}
           {showAddEmployeeModal&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
@@ -2592,7 +1879,7 @@ export default function KFCanteen() {
                       var newUsers = validRows.map(r=>{
                         var name=toProperCase(r.name);
                         var initials=name.split(" ").filter(Boolean).map(w=>w[0]).join("").toUpperCase().slice(0,2);
-                        return {id:"u"+Date.now()+Math.random(),username:"",password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),phone:"",creditLimit:1000,creditBalance:1000,registered:false,isEmployee:true};
+                        return {id:"u"+Date.now()+Math.random(),username:"",password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),phone:"",creditLimit:1000,creditBalance:1000,registered:false};
                       });
                       setUsers(prev=>[...prev,...newUsers]);
                       setShowAddEmployeeModal(false);
@@ -2609,7 +1896,7 @@ export default function KFCanteen() {
 
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
-              <Icon name="people" size={20} color={PURPLE} /> Employees
+              <Icon name="people" size={20} color={PURPLE} /> Personnel
             </h2>
             <div style={{display:"flex",gap:8}}>
               <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
@@ -2620,9 +1907,6 @@ export default function KFCanteen() {
               </div>
               <button onClick={()=>setShowAddEmployeeModal(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 <Icon name="plus" size={14} color="#fff" /> Add Employee
-              </button>
-              <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-                📥 Import Excel
               </button>
             </div>
           </div>
@@ -2748,81 +2032,6 @@ export default function KFCanteen() {
           <div style={{marginTop:12,background:"#F0FDF4",borderRadius:10,border:"1px solid #A7F3D0",padding:"10px 14px",fontSize:12,color:"#065F46"}}>
             💡 Credit balances auto-reset to each user's limit on the <strong>15th</strong> and <strong>last day</strong> of every month.
           </div>
-
-          {/* ── OUTSIDE CUSTOMERS (separate table) ── */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"28px 0 16px",flexWrap:"wrap",gap:12}}>
-            <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
-              <Icon name="people" size={20} color={PURPLE} /> Outside Customers ({outsideCustomers.length})
-            </h2>
-            <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
-              <Icon name="search" size={15} color="#9CA3AF" />
-              <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Search name, email, phone..."
-                style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
-              {customerSearch&&<button onClick={()=>setCustomerSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
-            </div>
-          </div>
-
-          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead>
-                <tr style={{background:"#F9FAFB"}}>
-                  {["Name","Email","Phone","Username","Credit Limit","Balance","Actions"].map(h=>(
-                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCustomers.length===0&&<tr><td colSpan={7} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No outside customers found.</td></tr>}
-                {filteredCustomers.map(u=>(
-                  <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                    <td style={{padding:"12px 14px"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <div style={{width:32,height:32,borderRadius:"50%",background:"#E0F2FE",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#0369A1",flexShrink:0}}>{u.avatar}</div>
-                        <span style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</span>
-                      </div>
-                    </td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.email||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
-                      {editCreditId===u.id ? (
-                        <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                          <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
-                            style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
-                          <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:parseFloat(editCreditVal)||uu.creditLimit}:uu));setEditCreditId(null);}}
-                            style={{background:PURPLE,color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>Save</button>
-                          <button onClick={()=>setEditCreditId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>✕</button>
-                        </div>
-                      ) : (
-                        <span style={{fontWeight:600,color:"#374151"}}>₱{(u.creditLimit||0).toLocaleString()}</span>
-                      )}
-                    </td>
-                    <td style={{padding:"12px 14px"}}>
-                      <span style={{fontWeight:700,color:u.creditBalance<100?"#EF4444":u.creditBalance<500?"#F59E0B":"#059669"}}>
-                        ₱{(u.creditBalance||0).toLocaleString()}
-                      </span>
-                    </td>
-                    <td style={{padding:"12px 14px"}}>
-                      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                        <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
-                          style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Set Limit
-                        </button>
-                        <button onClick={()=>setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu))}
-                          style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Reset
-                        </button>
-                        <button onClick={()=>setUsers(prev=>prev.filter(uu=>uu.id!==u.id))}
-                          style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          <Icon name="trash" size={12} color="#991B1B" /> Remove
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       );
     }
@@ -2865,15 +2074,7 @@ export default function KFCanteen() {
           {/* ── ORDERS TAB ── */}
           {historyTab==="orders"&&(()=>{
             const selDateStr = salesDate.toISOString().slice(0,10);
-            const allDayOrders = orders.filter(o=>o.date===selDateStr);
-            const hs = historySearch.toLowerCase().trim();
-            const dayOrders = hs
-              ? allDayOrders.filter(o=>
-                  o.id.toLowerCase().includes(hs)||
-                  o.user.toLowerCase().includes(hs)||
-                  (o.plant||"").toLowerCase().includes(hs)
-                )
-              : allDayOrders;
+            const dayOrders = orders.filter(o=>o.date===selDateStr);
             const cashOrders   = dayOrders.filter(o=>o.paymentType==="Cash");
             const creditOrders = dayOrders.filter(o=>o.paymentType==="Credit");
             const cashTotal    = cashOrders.reduce((s,o)=>s+o.total,0);
@@ -2903,7 +2104,7 @@ export default function KFCanteen() {
                   </div>
                   <button onClick={()=>{setShowSalesCalendar(p=>!p);setShowDownloadMenu(false);}}
                     style={{display:"flex",alignItems:"center",gap:6,background:showSalesCalendar?PURPLE:"#fff",color:showSalesCalendar?"#fff":PURPLE,border:"1.5px solid "+PURPLE,borderRadius:9,padding:"8px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
-                    🗓 {showSalesCalendar?"Close":"Change Date"}
+                    🗓️ {showSalesCalendar?"Close":"Select Date"}
                   </button>
                   {/* Download Excel button */}
                   {dayOrders.length>0&&(
@@ -2999,32 +2200,19 @@ export default function KFCanteen() {
                   ))}
                 </div>
 
-                {/* Search bar */}
-                <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,padding:"8px 14px",marginBottom:12}}>
-                  <Icon name="search" size={15} color="#9CA3AF" />
-                  <input value={historySearch} onChange={e=>setHistorySearch(e.target.value)}
-                    placeholder="Search by order ID, customer name, or plant..."
-                    style={{border:"none",outline:"none",fontSize:13,color:"#111",width:"100%",background:"none"}} />
-                  {historySearch&&<button onClick={()=>setHistorySearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
-                </div>
-
                 {/* orders table for selected day */}
-                {allDayOrders.length===0 ? (
+                {dayOrders.length===0 ? (
                   <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"3rem",textAlign:"center"}}>
                     <div style={{fontSize:32,marginBottom:8}}>📭</div>
                     <div style={{fontWeight:600,color:"#374151"}}>No orders on this date</div>
                     <div style={{fontSize:13,color:"#9CA3AF",marginTop:4}}>Select a date with a 🟢 dot to see its orders</div>
-                  </div>
-                ) : dayOrders.length===0 ? (
-                  <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"2rem",textAlign:"center"}}>
-                    <div style={{fontSize:13,color:"#9CA3AF"}}>No results for "{historySearch}"</div>
                   </div>
                 ) : (
                   <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
                         <tr style={{background:"#F9FAFB"}}>
-                          {["Order ID","Customer","Plant","Items","Total","Payment","Time"].map(h=>(
+                          {["Order ID","Customer","Items","Total","Payment","Time"].map(h=>(
                             <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
                           ))}
                         </tr>
@@ -3034,9 +2222,6 @@ export default function KFCanteen() {
                           <tr key={order.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                             <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11}}>{order.id}</td>
                             <td style={{padding:"11px 14px",fontWeight:600,color:"#111"}}>{order.user}</td>
-                            <td style={{padding:"11px 14px"}}>
-                              {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
-                            </td>
                             <td style={{padding:"11px 14px",color:"#6B7280"}}>{order.items.map((it,i)=>(<div key={i} style={{fontSize:12,lineHeight:1.7}}>{it.name} ×{it.qty}</div>))}</td>
                             <td style={{padding:"11px 14px",fontWeight:700,color:"#059669"}}>₱{order.total}</td>
                             <td style={{padding:"11px 14px"}}>
@@ -3052,9 +2237,7 @@ export default function KFCanteen() {
                       </tbody>
                       <tfoot>
                         <tr style={{background:"#F9FAFB",borderTop:"2px solid #E5E7EB"}}>
-                          <td colSpan={4} style={{padding:"11px 14px",fontWeight:700,color:"#374151",fontSize:13}}>
-                            {hs ? "Filtered Total" : "Daily Total"}
-                          </td>
+                          <td colSpan={3} style={{padding:"11px 14px",fontWeight:700,color:"#374151",fontSize:13}}>Daily Total</td>
                           <td style={{padding:"11px 14px",fontWeight:800,color:PURPLE,fontSize:15}}>₱{dayTotal}</td>
                           <td colSpan={2} style={{padding:"11px 14px",fontSize:12,color:"#6B7280"}}>
                             💵 Cash: ₱{cashTotal} &nbsp;|&nbsp; 💳 Credit: ₱{creditTotal}
