@@ -1,0 +1,382 @@
+import { supabase } from "./supabaseClient";
+
+/* ── field mapping: app (camelCase) <-> database (snake_case) ── */
+
+export const userToDb = (u) => ({
+  id: u.id,
+  username: u.username,
+  password: u.password,
+  role: u.role,
+  name: u.name,
+  avatar: u.avatar,
+  plant: u.plant,
+  id_number: u.idNumber,
+  department: u.department,
+  position: u.position,
+  company: u.company,
+  phone: u.phone,
+  email: u.email,
+  credit_limit: u.creditLimit,
+  credit_balance: u.creditBalance,
+  registered: u.registered,
+  is_employee: u.isEmployee,
+});
+
+export const userFromDb = (r) => ({
+  id: r.id,
+  username: r.username,
+  password: r.password,
+  role: r.role,
+  name: r.name,
+  avatar: r.avatar,
+  plant: r.plant,
+  idNumber: r.id_number,
+  department: r.department,
+  position: r.position,
+  company: r.company,
+  phone: r.phone,
+  email: r.email,
+  creditLimit: Number(r.credit_limit),
+  creditBalance: Number(r.credit_balance),
+  registered: r.registered,
+  isEmployee: r.is_employee,
+});
+
+/* ── users table ── */
+
+export const fetchUsers = async () => {
+  const { data, error } = await supabase.from("users").select("*");
+  if (error) { console.error("fetchUsers failed:", error); return []; }
+  return data.map(userFromDb);
+};
+
+export const dbInsertUser = async (user) => {
+  const { error } = await supabase.from("users").insert(userToDb(user));
+  if (error) console.error("dbInsertUser failed:", error);
+  return { success: !error, error };
+};
+
+export const dbUpdateUser = async (id, patch) => {
+  const dbPatch = userToDb({ id, ...patch });
+  delete dbPatch.id;
+  Object.keys(dbPatch).forEach(k => dbPatch[k] === undefined && delete dbPatch[k]);
+  const { error } = await supabase.from("users").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateUser failed:", error);
+  return { success: !error, error };
+};
+
+export const dbDeleteUser = async (id) => {
+  const { error } = await supabase.from("users").delete().eq("id", id);
+  if (error) console.error("dbDeleteUser failed:", error);
+  return { success: !error, error };
+};
+
+export const dbDeleteUsers = async (ids) => {
+  const { error } = await supabase.from("users").delete().in("id", ids);
+  if (error) console.error("dbDeleteUsers failed:", error);
+  return { success: !error, error };
+};
+
+export const dbInsertUsers = async (users) => {
+  const { error } = await supabase.from("users").insert(users.map(userToDb));
+  if (error) console.error("dbInsertUsers failed:", error);
+  return { success: !error, error };
+};
+
+/* ── menu_items table ── */
+
+const menuItemToDb = (weekKey, day, m) => ({
+  id: m.id,
+  week_key: weekKey,
+  day,
+  name: m.name,
+  price: m.price,
+  available: m.available,
+  img: m.img,
+  is_photo: m.isPhoto,
+  cat: m.cat,
+  grams: m.grams,
+  dish_id: m.dishId || null,
+});
+
+export const fetchMenu = async () => {
+  const { data, error } = await supabase.from("menu_items").select("*");
+  if (error) { console.error("fetchMenu failed:", error); return {}; }
+  const menu = {};
+  data.forEach(r => {
+    if (!menu[r.week_key]) menu[r.week_key] = {};
+    if (!menu[r.week_key][r.day]) menu[r.week_key][r.day] = [];
+    menu[r.week_key][r.day].push({
+      id: r.id, name: r.name, price: Number(r.price), available: r.available,
+      img: r.img, isPhoto: r.is_photo, cat: r.cat, grams: r.grams==null?null:Number(r.grams),
+      dishId: r.dish_id || null,
+    });
+  });
+  return menu;
+};
+
+export const dbInsertMenuItem = async (weekKey, day, item) => {
+  const { error } = await supabase.from("menu_items").insert(menuItemToDb(weekKey, day, item));
+  if (error) console.error("dbInsertMenuItem failed:", error);
+};
+
+export const dbUpdateMenuItem = async (id, patch) => {
+  const dbPatch = {};
+  if ("available" in patch) dbPatch.available = patch.available;
+  if ("name" in patch) dbPatch.name = patch.name;
+  if ("price" in patch) dbPatch.price = patch.price;
+  const { error } = await supabase.from("menu_items").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateMenuItem failed:", error);
+};
+
+export const dbDeleteMenuItem = async (id) => {
+  const { error } = await supabase.from("menu_items").delete().eq("id", id);
+  if (error) console.error("dbDeleteMenuItem failed:", error);
+};
+
+/* ── other_products table ── */
+
+const productToDb = (p) => ({
+  id: p.id,
+  name: p.name,
+  category: p.category,
+  buy_price: p.buyPrice,
+  price: p.price,
+  emoji: p.emoji,
+  photo: p.photo,
+  is_photo: p.isPhoto,
+  stock: p.stock,
+  available: p.available,
+});
+
+const productFromDb = (r) => ({
+  id: r.id, name: r.name, category: r.category, buyPrice: Number(r.buy_price),
+  price: Number(r.price), emoji: r.emoji, photo: r.photo, isPhoto: r.is_photo,
+  stock: r.stock, available: r.available,
+});
+
+export const fetchProducts = async () => {
+  const { data, error } = await supabase.from("other_products").select("*");
+  if (error) { console.error("fetchProducts failed:", error); return []; }
+  return data.map(productFromDb);
+};
+
+export const dbInsertProduct = async (product) => {
+  const { error } = await supabase.from("other_products").insert(productToDb(product));
+  if (error) console.error("dbInsertProduct failed:", error);
+};
+
+export const dbUpdateProduct = async (id, patch) => {
+  const dbPatch = productToDb({ id, ...patch });
+  delete dbPatch.id;
+  Object.keys(dbPatch).forEach(k => dbPatch[k] === undefined && delete dbPatch[k]);
+  const { error } = await supabase.from("other_products").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateProduct failed:", error);
+};
+
+export const dbDeleteProduct = async (id) => {
+  const { error } = await supabase.from("other_products").delete().eq("id", id);
+  if (error) console.error("dbDeleteProduct failed:", error);
+};
+
+/* ── orders table ── */
+
+const orderToDb = (o) => ({
+  id: o.id,
+  user_id: o.userId,
+  user_name: o.user,
+  date: o.date,
+  plant: o.plant,
+  items: o.items,
+  total: o.total,
+  payment_type: o.paymentType || null,
+  time: o.time,
+});
+
+const orderFromDb = (r) => ({
+  id: r.id, userId: r.user_id, user: r.user_name, date: r.date, plant: r.plant,
+  items: r.items, total: Number(r.total), paymentType: r.payment_type, time: r.time,
+});
+
+export const fetchOrders = async () => {
+  const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+  if (error) { console.error("fetchOrders failed:", error); return []; }
+  return data.map(orderFromDb);
+};
+
+export const dbInsertOrder = async (order) => {
+  const { error } = await supabase.from("orders").insert(orderToDb(order));
+  if (error) console.error("dbInsertOrder failed:", error);
+};
+
+export const dbUpdateOrder = async (id, patch) => {
+  const dbPatch = {};
+  if ("paymentType" in patch) dbPatch.payment_type = patch.paymentType;
+  const { error } = await supabase.from("orders").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateOrder failed:", error);
+};
+
+/* ── inventory_log table ── */
+
+const logToDb = (l) => ({
+  id: l.id, product: l.product, emoji: l.emoji, type: l.type,
+  qty: l.qty, before: l.before, after: l.after, by: l.by, time: l.time,
+});
+
+const logFromDb = (r) => ({
+  id: r.id, product: r.product, emoji: r.emoji, type: r.type,
+  qty: r.qty, before: r.before, after: r.after, by: r.by, time: r.time,
+});
+
+export const fetchInventoryLog = async () => {
+  const { data, error } = await supabase.from("inventory_log").select("*").order("created_at", { ascending: false });
+  if (error) { console.error("fetchInventoryLog failed:", error); return []; }
+  return data.map(logFromDb);
+};
+
+export const dbInsertLog = async (entry) => {
+  const { error } = await supabase.from("inventory_log").insert(logToDb(entry));
+  if (error) console.error("dbInsertLog failed:", error);
+};
+
+/* ── receipts table ── */
+
+const receiptToDb = (r) => ({
+  id: r.id, photo: r.photo, date: r.date, amount: r.amount,
+  note: r.note, source: r.source, source_name: r.sourceName, purchase_type: r.purchaseType,
+  uploaded_by: r.by, uploaded_at: r.uploadedAt,
+});
+
+const receiptFromDb = (r) => ({
+  id: r.id, photo: r.photo, date: r.date, amount: r.amount==null?null:Number(r.amount),
+  note: r.note, source: r.source, sourceName: r.source_name, purchaseType: r.purchase_type,
+  by: r.uploaded_by, uploadedAt: r.uploaded_at,
+});
+
+export const fetchReceipts = async () => {
+  const { data, error } = await supabase.from("receipts").select("*").order("created_at", { ascending: false });
+  if (error) { console.error("fetchReceipts failed:", error); return []; }
+  return data.map(receiptFromDb);
+};
+
+export const dbInsertReceipt = async (receipt) => {
+  const { error } = await supabase.from("receipts").insert(receiptToDb(receipt));
+  if (error) console.error("dbInsertReceipt failed:", error);
+};
+
+export const dbDeleteReceipt = async (id) => {
+  const { error } = await supabase.from("receipts").delete().eq("id", id);
+  if (error) console.error("dbDeleteReceipt failed:", error);
+};
+
+/* ── raw_materials table ── */
+
+const rawMaterialToDb = (m) => ({
+  id: m.id, name: m.name, unit: m.unit, stock: m.stock, buy_price: m.buyPrice,
+});
+const rawMaterialFromDb = (r) => ({
+  id: r.id, name: r.name, unit: r.unit, stock: Number(r.stock), buyPrice: Number(r.buy_price),
+});
+
+export const fetchRawMaterials = async () => {
+  const { data, error } = await supabase.from("raw_materials").select("*");
+  if (error) { console.error("fetchRawMaterials failed:", error); return []; }
+  return data.map(rawMaterialFromDb);
+};
+
+export const dbInsertRawMaterial = async (material) => {
+  const { error } = await supabase.from("raw_materials").insert(rawMaterialToDb(material));
+  if (error) console.error("dbInsertRawMaterial failed:", error);
+};
+
+export const dbUpdateRawMaterial = async (id, patch) => {
+  const dbPatch = rawMaterialToDb({ id, ...patch });
+  delete dbPatch.id;
+  Object.keys(dbPatch).forEach(k => dbPatch[k] === undefined && delete dbPatch[k]);
+  const { error } = await supabase.from("raw_materials").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateRawMaterial failed:", error);
+};
+
+export const dbDeleteRawMaterial = async (id) => {
+  const { error } = await supabase.from("raw_materials").delete().eq("id", id);
+  if (error) console.error("dbDeleteRawMaterial failed:", error);
+};
+
+/* ── dishes + dish_ingredients tables ── */
+
+const dishToDb = (d) => ({
+  id: d.id, name: d.name, cat: d.cat, price: d.price, img: d.img, is_photo: d.isPhoto, grams: d.grams,
+});
+const dishIngredientToDb = (dishId, ing) => ({
+  id: ing.id, dish_id: dishId, raw_material_id: ing.rawMaterialId, quantity: ing.quantity,
+});
+
+export const fetchDishes = async () => {
+  const [{ data: dishRows, error: e1 }, { data: ingRows, error: e2 }] = await Promise.all([
+    supabase.from("dishes").select("*"),
+    supabase.from("dish_ingredients").select("*"),
+  ]);
+  if (e1) { console.error("fetchDishes failed:", e1); return []; }
+  if (e2) console.error("fetch dish_ingredients failed:", e2);
+  return dishRows.map(d => ({
+    id: d.id, name: d.name, cat: d.cat, price: Number(d.price), img: d.img, isPhoto: d.is_photo, grams: d.grams==null?null:Number(d.grams),
+    ingredients: (ingRows||[]).filter(i => i.dish_id === d.id).map(i => ({ id: i.id, rawMaterialId: i.raw_material_id, quantity: Number(i.quantity) })),
+  }));
+};
+
+export const dbInsertDish = async (dish) => {
+  const { error } = await supabase.from("dishes").insert(dishToDb(dish));
+  if (error) { console.error("dbInsertDish failed:", error); return; }
+  if (dish.ingredients && dish.ingredients.length) {
+    const rows = dish.ingredients.map(ing => dishIngredientToDb(dish.id, ing));
+    const { error: e2 } = await supabase.from("dish_ingredients").insert(rows);
+    if (e2) console.error("dbInsertDish ingredients failed:", e2);
+  }
+};
+
+export const dbUpdateDish = async (id, patch, ingredients) => {
+  const dbPatch = dishToDb({ id, ...patch });
+  delete dbPatch.id;
+  Object.keys(dbPatch).forEach(k => dbPatch[k] === undefined && delete dbPatch[k]);
+  if (Object.keys(dbPatch).length) {
+    const { error } = await supabase.from("dishes").update(dbPatch).eq("id", id);
+    if (error) console.error("dbUpdateDish failed:", error);
+  }
+  if (ingredients) {
+    // replace all ingredient rows for this dish
+    const { error: eDel } = await supabase.from("dish_ingredients").delete().eq("dish_id", id);
+    if (eDel) console.error("dbUpdateDish clear ingredients failed:", eDel);
+    if (ingredients.length) {
+      const rows = ingredients.map(ing => dishIngredientToDb(id, ing));
+      const { error: eIns } = await supabase.from("dish_ingredients").insert(rows);
+      if (eIns) console.error("dbUpdateDish insert ingredients failed:", eIns);
+    }
+  }
+};
+
+export const dbDeleteDish = async (id) => {
+  const { error } = await supabase.from("dishes").delete().eq("id", id);
+  if (error) console.error("dbDeleteDish failed:", error);
+};
+
+/* ── raw_material_log table ── */
+
+const rawMaterialLogToDb = (l) => ({
+  id: l.id, raw_material: l.rawMaterial, unit: l.unit, type: l.type,
+  qty: l.qty, before: l.before, after: l.after, by: l.by, time: l.time,
+});
+const rawMaterialLogFromDb = (r) => ({
+  id: r.id, rawMaterial: r.raw_material, unit: r.unit, type: r.type,
+  qty: Number(r.qty), before: Number(r.before), after: Number(r.after), by: r.by, time: r.time,
+});
+
+export const fetchRawMaterialLog = async () => {
+  const { data, error } = await supabase.from("raw_material_log").select("*").order("created_at", { ascending: false });
+  if (error) { console.error("fetchRawMaterialLog failed:", error); return []; }
+  return data.map(rawMaterialLogFromDb);
+};
+
+export const dbInsertRawMaterialLog = async (entry) => {
+  const { error } = await supabase.from("raw_material_log").insert(rawMaterialLogToDb(entry));
+  if (error) console.error("dbInsertRawMaterialLog failed:", error);
+};

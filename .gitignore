@@ -24,3 +24,9 @@ yarn-debug.log*
 yarn-error.log*
 
 .vercel
+
+# database backups — contain real data, never commit
+/backups
+
+# personal Claude Code permission settings — not shared
+.claude/settings.local.json

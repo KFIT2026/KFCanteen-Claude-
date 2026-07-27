@@ -1,4 +1,15 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import {
+  fetchUsers, dbInsertUser, dbUpdateUser, dbDeleteUser, dbInsertUsers, dbDeleteUsers,
+  fetchMenu, dbInsertMenuItem, dbUpdateMenuItem, dbDeleteMenuItem,
+  fetchProducts, dbInsertProduct, dbUpdateProduct, dbDeleteProduct,
+  fetchOrders, dbInsertOrder, dbUpdateOrder,
+  fetchInventoryLog, dbInsertLog,
+  fetchReceipts, dbInsertReceipt, dbDeleteReceipt,
+  fetchRawMaterials, dbInsertRawMaterial, dbUpdateRawMaterial, dbDeleteRawMaterial,
+  fetchDishes, dbInsertDish, dbUpdateDish, dbDeleteDish,
+  fetchRawMaterialLog, dbInsertRawMaterialLog,
+} from "./db";
 
 const PURPLE = "#6B21A8";
 const PURPLE_LIGHT = "#EDE9FE";
@@ -10,6 +21,11 @@ const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","
 
 // helpers
 const getDateKey = (date) => DAYS[Math.min(date.getDay()===0?5:date.getDay()-1,5)]; // Mon-Sat day name
+// local "YYYY-MM-DD" — NEVER use date.toISOString().slice(0,10) for this: it converts
+// through UTC, which silently shifts the date back a day in any positive UTC-offset
+// timezone (e.g. Philippine Time, UTC+8) whenever the local date/time was constructed
+// at local midnight or during the local-morning hours still behind UTC's date.
+const toDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 // traditional calendar week number (week containing Jan 1 = week 1)
 const getWeekNumber = (date) => {
   const start = new Date(date.getFullYear(),0,1);
@@ -46,120 +62,31 @@ const MEAL_CATS = ["ALL","BREAKFAST","LUNCH","SNACK"];
 const PLANTS = ["KF-Main","Colortree","KF-Global"];
 const toProperCase = str => str.trim().replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
-// registered = has password set (username/password filled)
-// unregistered = admin-added employees, no password yet
-const USERS = [
-  // Admin
-  { id:"u1",  username:"admin",      password:"admin123",  role:"admin",       name:"System Admin",     avatar:"SA", plant:"KF-Main",   idNumber:"KF2300001",  phone:"09171234501", creditLimit:5000, creditBalance:5000, registered:true },
-  // ONE Staff-Admin (supervises all plants, sees all orders + full history)
-  { id:"u2",  username:"staffadmin", password:"sa123",     role:"staff-admin", name:"Ana Reyes",        avatar:"AR", plant:"KF-Main",   idNumber:"KF2300002",  phone:"09181234502", creditLimit:2000, creditBalance:2000, registered:true },
-  // Staff per plant (sees only their assigned plant orders)
-  { id:"u3",  username:"staff.main", password:"main123",   role:"staff",       name:"Ben Cruz",         avatar:"BC", plant:"KF-Main",   idNumber:"KF2300003",  phone:"09191234503", creditLimit:1000, creditBalance:1000, registered:true },
-  { id:"u12", username:"staff.ct",   password:"ct123",     role:"staff",       name:"Rosa Dela Cruz",   avatar:"RD", plant:"Colortree", idNumber:"CT-23-0001", phone:"09221234512", creditLimit:1000, creditBalance:1000, registered:true },
-  { id:"u13", username:"staff.kg",   password:"kg123",     role:"staff",       name:"Carlos Lim",       avatar:"CL", plant:"KF-Global", idNumber:"KF2301001",  phone:"09231234513", creditLimit:1000, creditBalance:1000, registered:true },
-  // Customers
-  { id:"u4",  username:"juan",       password:"user123",   role:"user",        name:"Juan dela Cruz",   avatar:"JD", plant:"KF-Main",   idNumber:"KF2300004",  phone:"09201234504", creditLimit:1000, creditBalance:856,  registered:true },
-  { id:"u5",  username:"maria",      password:"user456",   role:"user",        name:"Maria Santos",     avatar:"MS", plant:"Colortree", idNumber:"CT-23-0005", phone:"09211234505", creditLimit:1000, creditBalance:55,   registered:true },
-  { id:"u16", username:"paulo",      password:"paulo123",  role:"user",        name:"Paulo Fernandez",  avatar:"PF", plant:"KF-Global", idNumber:"KF2301004",  phone:"09261234516", creditLimit:1000, creditBalance:950,  registered:true },
-  // Unregistered employees awaiting self-registration
-  { id:"u6",  username:"", password:"", role:"user", name:"Liza Reyes",      avatar:"LR", plant:"KF-Main",   idNumber:"KF2301003",  phone:"", creditLimit:1000, creditBalance:1000, registered:false },
-  { id:"u7",  username:"", password:"", role:"user", name:"Joseph Tan",      avatar:"JT", plant:"Colortree", idNumber:"CT-23-0002", phone:"", creditLimit:1000, creditBalance:1000, registered:false },
-  { id:"u8",  username:"", password:"", role:"user", name:"Paulo Fernandez", avatar:"PF", plant:"KF-Global", idNumber:"KF2301004",  phone:"", creditLimit:1000, creditBalance:1000, registered:false },
-];
+/* ── footer (shown on every page, fixed height so it never shifts between pages) ── */
+const FOOTER_HEIGHT = 156;
+const Footer = () => (
+  <footer style={{background:"#fff",borderTop:"1px solid #E5E7EB",flexShrink:0,height:FOOTER_HEIGHT,overflow:"hidden",display:"flex",alignItems:"center"}}>
+    <div style={{maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"0 1.5rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:24,flexWrap:"wrap"}}>
+        <img src="/logos/koufu-globe.webp" alt="Kou Fu" style={{height:42,width:"auto"}} />
+        <img src="/logos/koufu-mis.webp" alt="Kou Fu MIS" style={{height:30,width:"auto"}} />
+        <img src="/logos/colortree-mark.png" alt="Colortree" style={{height:34,width:"auto"}} />
+      </div>
+      <div style={{display:"flex",gap:32,flexWrap:"wrap",justifyContent:"center",textAlign:"center"}}>
+        <div style={{maxWidth:280}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:2}}>Kou Fu Color Printing Corporation</div>
+          <div style={{fontSize:11,color:"#9CA3AF",lineHeight:1.4}}>Lots 6-7, Block 3, Phase 2, Mountview Industrial Complex, 4116 Carmona</div>
+        </div>
+        <div style={{maxWidth:280}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:2}}>Colortree Label Corporation</div>
+          <div style={{fontSize:11,color:"#9CA3AF",lineHeight:1.4}}>Lot 3-5, Block 8, Phase 2, Mountview Industrial Complex, Carmona, Cavite</div>
+        </div>
+      </div>
+      <div style={{fontSize:11,color:"#D1D5DB"}}>© 2026 KFCP MIS. All rights reserved.</div>
+    </div>
+  </footer>
+);
 
-const DEFAULT_OTHER_PRODUCTS = [
-  { id:"op1",  name:"Nova Chips",           category:"Chips",          buyPrice:8,  price:15, emoji:"🥔", stock:20, available:true },
-  { id:"op2",  name:"Piattos Cheese",        category:"Chips",          buyPrice:12, price:20, emoji:"🥔", stock:15, available:true },
-  { id:"op3",  name:"Rebisco Biscuit",       category:"Biscuit",        buyPrice:7,  price:12, emoji:"🍪", stock:30, available:true },
-  { id:"op4",  name:"SkyFlakes",             category:"Biscuit",        buyPrice:6,  price:10, emoji:"🍪", stock:25, available:true },
-  { id:"op5",  name:"Lucky Me! Pancit Canton",category:"Instant Noodles",buyPrice:10,price:18, emoji:"🍜", stock:20, available:true },
-  { id:"op6",  name:"Nissin Cup Noodles",    category:"Instant Noodles",buyPrice:22, price:35, emoji:"🍜", stock:10, available:true },
-  { id:"op7",  name:"Nescafé 3-in-1",        category:"Instant Coffee", buyPrice:5,  price:8,  emoji:"☕", stock:50, available:true },
-  { id:"op8",  name:"Great Taste Coffee",    category:"Instant Coffee", buyPrice:5,  price:8,  emoji:"☕", stock:50, available:true },
-  { id:"op9",  name:"Tang Orange",           category:"Powdered Drinks",buyPrice:3,  price:6,  emoji:"🍊", stock:40, available:true },
-  { id:"op10", name:"Milo Sachet",           category:"Powdered Drinks",buyPrice:7,  price:12, emoji:"🥤", stock:35, available:true },
-  { id:"op11", name:"Coca-Cola 1.5L",        category:"Soft Drinks",    buyPrice:50, price:75, emoji:"🥤", stock:12, available:true },
-  { id:"op12", name:"Royal TruOrange 1L",    category:"Soft Drinks",    buyPrice:38, price:55, emoji:"🥤", stock:8,  available:true },
-  { id:"op13", name:"C2 Apple 230ml",        category:"Others",         buyPrice:13, price:20, emoji:"🧃", stock:18, available:true },
-  { id:"op14", name:"Mineral Water 500ml",   category:"Others",         buyPrice:8,  price:15, emoji:"💧", stock:24, available:true },
-];
-
-const defaultMenu = {
-  Monday:[
-    { id:"m1", name:"Adobo with Rice",    price:65, available:true, img:"🍚", cat:"LUNCH",      grams:350 },
-    { id:"m2", name:"Sinigang na Baboy",  price:75, available:true, img:"🍲", cat:"LUNCH",      grams:400 },
-    { id:"m3", name:"Pandesal",           price:5,  available:true, img:"🥖", cat:"BREAKFAST",  grams:50  },
-  ],
-  Tuesday:[
-    { id:"m4", name:"Tinola with Rice",   price:65, available:true, img:"🍗", cat:"LUNCH",      grams:370 },
-    { id:"m5", name:"Chopsuey",           price:55, available:true, img:"🥦", cat:"LUNCH",      grams:300 },
-    { id:"m6", name:"Maja Blanca",        price:30, available:true, img:"🍮", cat:"SNACK",      grams:150 },
-  ],
-  Wednesday:[
-    { id:"m7", name:"Lechon Kawali & Rice",price:85,available:true, img:"🥩", cat:"LUNCH",     grams:380 },
-    { id:"m8", name:"Pinakbet",           price:55, available:true, img:"🫑", cat:"LUNCH",      grams:280 },
-    { id:"m9", name:"Halo-halo",          price:50, available:true, img:"🍧", cat:"SNACK",      grams:350 },
-  ],
-  Thursday:[
-    { id:"m10",name:"Kare-kare & Rice",   price:90, available:true, img:"🍛", cat:"LUNCH",      grams:420 },
-    { id:"m11",name:"Laing",              price:60, available:true, img:"🌿", cat:"LUNCH",      grams:250 },
-    { id:"m12",name:"Banana Cue",         price:10, available:true, img:"🍌", cat:"SNACK",      grams:120 },
-  ],
-  Friday:[
-    { id:"m13",name:"Bangus Sisig & Rice",price:80, available:true, img:"🐟", cat:"LUNCH",      grams:360 },
-    { id:"m14",name:"Ginisang Monggo",    price:55, available:true, img:"🫘", cat:"LUNCH",      grams:300 },
-    { id:"m15",name:"Buko Pandan",        price:35, available:true, img:"🥥", cat:"SNACK",      grams:200 },
-  ],
-  Saturday:[
-    { id:"m16",name:"Bulalo & Rice",      price:120,available:true, img:"🦴", cat:"LUNCH",      grams:500 },
-    { id:"m17",name:"Nilaga",             price:80, available:true, img:"🥕", cat:"LUNCH",      grams:450 },
-    { id:"m18",name:"Turon",              price:15, available:true, img:"🍡", cat:"SNACK",      grams:100 },
-  ],
-  Sunday:[
-    { id:"m19",name:"Lechon & Rice",      price:130,available:true, img:"🐷", cat:"LUNCH",      grams:480 },
-    { id:"m20",name:"Dinuguan",           price:70, available:true, img:"🍖", cat:"LUNCH",      grams:350 },
-    { id:"m21",name:"Puto Bumbong",       price:25, available:true, img:"🍢", cat:"SNACK",      grams:150 },
-  ],
-};
-
-const defaultOrders = [
-  // Jul 1 Wed - all 3 plants
-  { id:"KF000001", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-01", plant:"KF-Main",   items:[{name:"Adobo with Rice",qty:2,price:65,grams:350,buyPrice:null},{name:"Pandesal",qty:3,price:5,grams:50,buyPrice:null}], total:145, paymentType:"Cash",   time:"7:50 AM" },
-  { id:"KF000002", user:"Maria Santos",    userId:"u5",  date:"2026-07-01", plant:"Colortree", items:[{name:"Sinigang na Baboy",qty:1,price:75,grams:400,buyPrice:null},{name:"Rebisco Biscuit",qty:2,price:12,grams:null,buyPrice:7}], total:99, paymentType:"Credit", time:"8:20 AM" },
-  { id:"KF000003", user:"Paulo Fernandez", userId:"u16", date:"2026-07-01", plant:"KF-Global", items:[{name:"Nova Chips",qty:2,price:15,grams:null,buyPrice:8},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:42, paymentType:"Cash",   time:"9:00 AM" },
-
-  // Jul 2 Thu
-  { id:"KF000004", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-02", plant:"KF-Main",   items:[{name:"Lechon Kawali & Rice",qty:1,price:85,grams:380,buyPrice:null},{name:"Halo-halo",qty:1,price:50,grams:350,buyPrice:null}], total:135, paymentType:"Cash",   time:"8:10 AM" },
-  { id:"KF000005", user:"Maria Santos",    userId:"u5",  date:"2026-07-02", plant:"Colortree", items:[{name:"Pinakbet",qty:1,price:55,grams:280,buyPrice:null},{name:"Coca-Cola 1.5L",qty:1,price:75,grams:null,buyPrice:50}], total:130, paymentType:"Credit", time:"8:45 AM" },
-  { id:"KF000006", user:"Paulo Fernandez", userId:"u16", date:"2026-07-02", plant:"KF-Global", items:[{name:"Banana Cue",qty:3,price:10,grams:120,buyPrice:null},{name:"Tang Orange",qty:2,price:6,grams:null,buyPrice:3}], total:42, paymentType:"Cash",   time:"10:00 AM" },
-
-  // Jul 3 Fri
-  { id:"KF000007", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-03", plant:"KF-Main",   items:[{name:"Bangus Sisig & Rice",qty:2,price:80,grams:360,buyPrice:null},{name:"Royal TruOrange 1L",qty:1,price:55,grams:null,buyPrice:38}], total:215, paymentType:"Credit", time:"8:00 AM" },
-  { id:"KF000008", user:"Maria Santos",    userId:"u5",  date:"2026-07-03", plant:"Colortree", items:[{name:"Ginisang Monggo",qty:1,price:55,grams:300,buyPrice:null},{name:"Piattos Cheese",qty:1,price:20,grams:null,buyPrice:12}], total:75, paymentType:"Cash",   time:"9:30 AM" },
-  { id:"KF000009", user:"Paulo Fernandez", userId:"u16", date:"2026-07-03", plant:"KF-Global", items:[{name:"Buko Pandan",qty:2,price:35,grams:200,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:110, paymentType:"Cash",   time:"1:00 PM" },
-
-  // Jul 4 Sat
-  { id:"KF000010", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-04", plant:"KF-Main",   items:[{name:"Bulalo & Rice",qty:1,price:120,grams:500,buyPrice:null},{name:"Mineral Water 500ml",qty:2,price:15,grams:null,buyPrice:8}], total:150, paymentType:"Cash",   time:"8:15 AM" },
-  { id:"KF000011", user:"Maria Santos",    userId:"u5",  date:"2026-07-04", plant:"Colortree", items:[{name:"Nilaga",qty:1,price:80,grams:450,buyPrice:null},{name:"Lucky Me! Pancit Canton",qty:2,price:18,grams:null,buyPrice:10}], total:116, paymentType:"Credit", time:"9:00 AM" },
-  { id:"KF000012", user:"Paulo Fernandez", userId:"u16", date:"2026-07-04", plant:"KF-Global", items:[{name:"Turon",qty:4,price:15,grams:100,buyPrice:null},{name:"Great Taste Coffee",qty:2,price:8,grams:null,buyPrice:5}], total:76, paymentType:"Cash",   time:"2:30 PM" },
-
-  // Jul 6 Mon (TODAY) - mix of paid and unpaid
-  { id:"KF000013", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-06", plant:"KF-Main",   items:[{name:"Adobo with Rice",qty:2,price:65,grams:350,buyPrice:null},{name:"Pandesal",qty:2,price:5,grams:50,buyPrice:null}], total:140, paymentType:"Cash",   time:"7:50 AM" },
-  { id:"KF000014", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Sinigang na Baboy",qty:1,price:75,grams:400,buyPrice:null},{name:"Rebisco Biscuit",qty:2,price:12,grams:null,buyPrice:7}], total:99, paymentType:"Credit", time:"8:20 AM" },
-  { id:"KF000015", user:"Paulo Fernandez", userId:"u16", date:"2026-07-06", plant:"KF-Global", items:[{name:"Nova Chips",qty:2,price:15,grams:null,buyPrice:8},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:42, paymentType:"Cash",   time:"9:00 AM" },
-  { id:"KF000016", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-06", plant:"KF-Main",   items:[{name:"Tinola with Rice",qty:1,price:65,grams:370,buyPrice:null},{name:"SkyFlakes",qty:2,price:10,grams:null,buyPrice:6}], total:85, time:"10:15 AM" },
-  { id:"KF000017", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Chopsuey",qty:1,price:55,grams:300,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:95, time:"11:00 AM" },
-  { id:"KF000018", user:"Paulo Fernandez", userId:"u16", date:"2026-07-06", plant:"KF-Global", items:[{name:"Maja Blanca",qty:2,price:30,grams:150,buyPrice:null},{name:"Nescafe 3-in-1",qty:2,price:8,grams:null,buyPrice:5}], total:76, time:"11:30 AM" },
-  { id:"KF000019", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Kare-kare & Rice",qty:1,price:90,grams:420,buyPrice:null},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:102, time:"2:00 PM" },
-
-  // ⚠️ DEMO: Maria has ₱55 credit but this order is ₱102 — credit will be blocked, cash only
-  { id:"KF000023", user:"Maria Santos",    userId:"u5",  date:"2026-07-06", plant:"Colortree", items:[{name:"Bulalo & Rice",qty:1,price:120,grams:500,buyPrice:null},{name:"Mineral Water 500ml",qty:1,price:15,grams:null,buyPrice:8}], total:135, time:"2:45 PM" },
-
-  // Early orders placed today for future dates
-  { id:"KF000020", user:"Juan dela Cruz",  userId:"u4",  date:"2026-07-07", plant:"KF-Main",   items:[{name:"Tinola with Rice",qty:1,price:65,grams:370,buyPrice:null},{name:"Pandesal",qty:2,price:5,grams:50,buyPrice:null}], total:75,  time:"8:05 AM" },
-  { id:"KF000021", user:"Maria Santos",    userId:"u5",  date:"2026-07-08", plant:"Colortree", items:[{name:"Adobo with Rice",qty:1,price:65,grams:350,buyPrice:null},{name:"Milo Sachet",qty:1,price:12,grams:null,buyPrice:7}], total:77,  time:"9:10 AM" },
-  { id:"KF000022", user:"Paulo Fernandez", userId:"u16", date:"2026-07-09", plant:"KF-Global", items:[{name:"Kare-kare & Rice",qty:1,price:90,grams:420,buyPrice:null},{name:"C2 Apple 230ml",qty:2,price:20,grams:null,buyPrice:13}], total:130, time:"10:00 AM" },
-];
 /* ── tiny icon SVG ── */
 const Icon = ({ name, size=16, color="currentColor" }) => {
   const paths = {
@@ -180,6 +107,8 @@ const Icon = ({ name, size=16, color="currentColor" }) => {
     check: <><polyline points="20 6 9 17 4 12"/></>,
     edit: <><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
     receipt: <><path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></>,
+    expense: <><path d="M20 7H4a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 7V5a2 2 0 00-2-2H8a2 2 0 00-2 2v2"/><circle cx="16" cy="13.5" r="1.5"/></>,
+    scale: <><path d="M12 3v18"/><path d="M5 7l-3 7a4 4 0 008 0z"/><path d="M19 7l-3 7a4 4 0 008 0z"/><path d="M3 7h18"/><path d="M9 3h6"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"middle",flexShrink:0}}>
@@ -197,7 +126,10 @@ const NAV = {
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
     { id:"mgproducts",label:"Manage Products", icon:"products" },
+    { id:"rawmaterials",label:"Raw Materials", icon:"scale" },
+    { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
+    { id:"expenses",  label:"Expenses",        icon:"expense" },
     { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
   ],
@@ -205,7 +137,10 @@ const NAV = {
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
     { id:"mgproducts",label:"Manage Products", icon:"products" },
+    { id:"rawmaterials",label:"Raw Materials", icon:"scale" },
+    { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
+    { id:"expenses",  label:"Expenses",        icon:"expense" },
     { id:"history",   label:"Overall History", icon:"history" },
   ],
   staff: [
@@ -226,33 +161,54 @@ export default function KFCanteen() {
   const [showPass, setShowPass] = useState(false);
   const [activeTab, setActiveTab] = useState("menu");
   const [showRegister, setShowRegister] = useState(false);
-  const [registerForm, setRegisterForm] = useState({ selectedUserId:"", phone:"", password:"", confirmPassword:"" });
+  const [registerForm, setRegisterForm] = useState({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"" });
   const [registerShowConfirm, setRegisterShowConfirm] = useState(false);
   const [nameSuggestions, setNameSuggestions] = useState([]);
   const [nameSearch, setNameSearch] = useState("");
   const [registerError, setRegisterError] = useState("");
   const [registerShowPass, setRegisterShowPass] = useState(false);
   const [showEmployeeCheck, setShowEmployeeCheck] = useState(false);
+  const [showRegisterConfirm, setShowRegisterConfirm] = useState(false);
   const [registerType, setRegisterType] = useState(null); // "employee" | "outside"
   const [outsideForm, setOutsideForm] = useState({ name:"", email:"", phone:"", password:"", confirmPassword:"" });
   const [outsideShowPass, setOutsideShowPass] = useState(false);
   const [outsideShowConfirm, setOutsideShowConfirm] = useState(false);
   const [outsideError, setOutsideError] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
-  const [users, setUsers] = useState(USERS);
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  useEffect(() => {
+    fetchUsers().then(rows => { setUsers(rows); setUsersLoading(false); });
+  }, []);
   const [creditNotif, setCreditNotif] = useState(false);
   const [editCreditId, setEditCreditId] = useState(null);
   const [editCreditVal, setEditCreditVal] = useState("");
   const [personnelSearch, setPersonnelSearch] = useState("");
   const [editRoleId, setEditRoleId] = useState(null);
+  const [editPlantId, setEditPlantId] = useState(null);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState([]);
   const [importError, setImportError] = useState("");
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [importProgress, setImportProgress] = useState({done:0, total:0});
   const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF-Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF-Main"}]});
+  const [addEmployeeError, setAddEmployeeError] = useState("");
+  const [addEmployeeSubmitting, setAddEmployeeSubmitting] = useState(false);
+  const [selectedUnregisteredIds, setSelectedUnregisteredIds] = useState([]);
+  const [showBulkRemoveConfirm, setShowBulkRemoveConfirm] = useState(false);
+  const [bulkRemoveSubmitting, setBulkRemoveSubmitting] = useState(false);
+  const [bulkRemoveError, setBulkRemoveError] = useState("");
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetStage, setResetStage] = useState("choose");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetSubmitting, setResetSubmitting] = useState(false);
 
   // menu / filter state — keyed by traditional calendar week (e.g. "2026-30"), then Mon-Sat day name
-  const [menu, setMenu] = useState(()=>({ [getWeekKey(TODAY_DATE)]: defaultMenu }));
+  const [menu, setMenu] = useState({});
+  useEffect(() => { fetchMenu().then(setMenu); }, []);
   const [selectedDate, setSelectedDate] = useState(TODAY_DATE);
   const selectedDay = getDateKey(selectedDate); // the Mon-Sat day name for menu lookup
   const selectedWeekKey = getWeekKey(selectedDate);
@@ -262,14 +218,15 @@ export default function KFCanteen() {
 
   // cart & orders
   const [cart, setCart] = useState([]);
-  const [orders, setOrders] = useState(defaultOrders);
+  const [orders, setOrders] = useState([]);
+  useEffect(() => { fetchOrders().then(setOrders); }, []);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [showPlantModal, setShowPlantModal] = useState(false);
   const [orderPlant, setOrderPlant] = useState("");
 
   // manage menu add form
   const [showAddItem, setShowAddItem] = useState(null);
-  const [newItem, setNewItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", days:[], weeks:[] });
+  const [newItem, setNewItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", days:[], weeks:[], dishId:null });
 
   const [dragOver, setDragOver] = useState(false);
   const photoInputRef = useRef(null);
@@ -286,7 +243,8 @@ export default function KFCanteen() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [otherCat, setOtherCat] = useState("All");
   const [filterCat, setFilterCat] = useState("All");
-  const [otherProducts, setOtherProducts] = useState(DEFAULT_OTHER_PRODUCTS);
+  const [otherProducts, setOtherProducts] = useState([]);
+  useEffect(() => { fetchProducts().then(setOtherProducts); }, []);
   const [mgDay, setMgDay] = useState(TODAY);
   const [mgDate, setMgDate] = useState(new Date(TODAY_DATE));
   const mgWeekKey = getWeekKey(mgDate);
@@ -305,59 +263,18 @@ export default function KFCanteen() {
   const [salesDate, setSalesDate] = useState(TODAY_DATE);
   const [showSalesCalendar, setShowSalesCalendar] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  const [expenseMonth, setExpenseMonth] = useState(TODAY_DATE.getMonth());
+  const [expenseYear, setExpenseYear] = useState(TODAY_DATE.getFullYear());
+  const [expenseSearch, setExpenseSearch] = useState("");
+  const [expenseUseRange, setExpenseUseRange] = useState(false);
+  const [expenseFromDate, setExpenseFromDate] = useState(toDateKey(new Date(TODAY_DATE.getFullYear(),TODAY_DATE.getMonth(),1)));
+  const [expenseToDate, setExpenseToDate] = useState(toDateKey(TODAY_DATE));
+  const [expenseExportType, setExpenseExportType] = useState("all");
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [scYear, setScYear] = useState(TODAY_DATE.getFullYear());
   const [scMonth, setScMonth] = useState(TODAY_DATE.getMonth());
-  const [inventoryLog, setInventoryLog] = useState([
-    // Jun 24 - initial stock load
-    { id:"il01", product:"Nova Chips",            emoji:"🥔", type:"IN",  qty:30, before:0,  after:30, by:"Admin KF",  time:"Jun 24, 2026 · 7:30 AM" },
-    { id:"il02", product:"Piattos Cheese",         emoji:"🥔", type:"IN",  qty:20, before:0,  after:20, by:"Admin KF",  time:"Jun 24, 2026 · 7:30 AM" },
-    { id:"il03", product:"Rebisco Biscuit",        emoji:"🍪", type:"IN",  qty:40, before:0,  after:40, by:"Admin KF",  time:"Jun 24, 2026 · 7:35 AM" },
-    { id:"il04", product:"SkyFlakes",              emoji:"🍪", type:"IN",  qty:35, before:0,  after:35, by:"Admin KF",  time:"Jun 24, 2026 · 7:35 AM" },
-    { id:"il05", product:"Lucky Me! Pancit Canton",emoji:"🍜", type:"IN",  qty:25, before:0,  after:25, by:"Ana Reyes", time:"Jun 24, 2026 · 7:40 AM" },
-    { id:"il06", product:"Nissin Cup Noodles",     emoji:"🍜", type:"IN",  qty:15, before:0,  after:15, by:"Ana Reyes", time:"Jun 24, 2026 · 7:40 AM" },
-    { id:"il07", product:"Nescafé 3-in-1",         emoji:"☕", type:"IN",  qty:60, before:0,  after:60, by:"Ana Reyes", time:"Jun 24, 2026 · 7:45 AM" },
-    { id:"il08", product:"Great Taste Coffee",     emoji:"☕", type:"IN",  qty:60, before:0,  after:60, by:"Ana Reyes", time:"Jun 24, 2026 · 7:45 AM" },
-    { id:"il09", product:"Tang Orange",            emoji:"🍊", type:"IN",  qty:50, before:0,  after:50, by:"Ben Cruz",  time:"Jun 24, 2026 · 7:50 AM" },
-    { id:"il10", product:"Milo Sachet",            emoji:"🥤", type:"IN",  qty:50, before:0,  after:50, by:"Ben Cruz",  time:"Jun 24, 2026 · 7:50 AM" },
-    { id:"il11", product:"Coca-Cola 1.5L",         emoji:"🥤", type:"IN",  qty:20, before:0,  after:20, by:"Ben Cruz",  time:"Jun 24, 2026 · 7:55 AM" },
-    { id:"il12", product:"Royal TruOrange 1L",     emoji:"🥤", type:"IN",  qty:15, before:0,  after:15, by:"Ben Cruz",  time:"Jun 24, 2026 · 7:55 AM" },
-    { id:"il13", product:"C2 Apple 230ml",         emoji:"🧃", type:"IN",  qty:25, before:0,  after:25, by:"Admin KF",  time:"Jun 24, 2026 · 8:00 AM" },
-    { id:"il14", product:"Mineral Water 500ml",    emoji:"💧", type:"IN",  qty:30, before:0,  after:30, by:"Admin KF",  time:"Jun 24, 2026 · 8:00 AM" },
-    // Jun 25 - sales OUT
-    { id:"il15", product:"Nova Chips",             emoji:"🥔", type:"OUT", qty:2,  before:30, after:28, by:"System",    time:"Jun 25, 2026 · 8:10 AM" },
-    { id:"il16", product:"Coca-Cola 1.5L",         emoji:"🥤", type:"OUT", qty:1,  before:20, after:19, by:"System",    time:"Jun 25, 2026 · 8:45 AM" },
-    { id:"il17", product:"Nescafé 3-in-1",         emoji:"☕", type:"OUT", qty:1,  before:60, after:59, by:"System",    time:"Jun 25, 2026 · 10:00 AM"},
-    // Jun 26 - sales OUT
-    { id:"il18", product:"Milo Sachet",            emoji:"🥤", type:"OUT", qty:2,  before:50, after:48, by:"System",    time:"Jun 26, 2026 · 8:30 AM" },
-    { id:"il19", product:"SkyFlakes",              emoji:"🍪", type:"OUT", qty:3,  before:35, after:32, by:"System",    time:"Jun 26, 2026 · 9:15 AM" },
-    { id:"il20", product:"Tang Orange",            emoji:"🍊", type:"OUT", qty:2,  before:50, after:48, by:"System",    time:"Jun 26, 2026 · 2:00 PM" },
-    // Jun 27 - restock + sales
-    { id:"il21", product:"Nova Chips",             emoji:"🥔", type:"IN",  qty:10, before:28, after:38, by:"Ana Reyes", time:"Jun 27, 2026 · 7:30 AM" },
-    { id:"il22", product:"Royal TruOrange 1L",     emoji:"🥤", type:"OUT", qty:2,  before:15, after:13, by:"System",    time:"Jun 27, 2026 · 8:00 AM" },
-    { id:"il23", product:"Piattos Cheese",         emoji:"🥔", type:"OUT", qty:1,  before:20, after:19, by:"System",    time:"Jun 27, 2026 · 9:30 AM" },
-    { id:"il24", product:"C2 Apple 230ml",         emoji:"🧃", type:"OUT", qty:2,  before:25, after:23, by:"System",    time:"Jun 27, 2026 · 1:00 PM" },
-    // Jun 28 - sales
-    { id:"il25", product:"Mineral Water 500ml",    emoji:"💧", type:"OUT", qty:2,  before:30, after:28, by:"System",    time:"Jun 28, 2026 · 8:15 AM" },
-    { id:"il26", product:"Lucky Me! Pancit Canton",emoji:"🍜", type:"OUT", qty:2,  before:25, after:23, by:"System",    time:"Jun 28, 2026 · 9:00 AM" },
-    { id:"il27", product:"Great Taste Coffee",     emoji:"☕", type:"OUT", qty:2,  before:60, after:58, by:"System",    time:"Jun 28, 2026 · 2:30 PM" },
-    // Jun 30 - restock
-    { id:"il28", product:"Coca-Cola 1.5L",         emoji:"🥤", type:"IN",  qty:10, before:19, after:29, by:"Ben Cruz",  time:"Jun 30, 2026 · 7:30 AM" },
-    { id:"il29", product:"Milo Sachet",            emoji:"🥤", type:"IN",  qty:20, before:48, after:68, by:"Ben Cruz",  time:"Jun 30, 2026 · 7:30 AM" },
-    { id:"il30", product:"Nova Chips",             emoji:"🥔", type:"OUT", qty:1,  before:38, after:37, by:"System",    time:"Jun 30, 2026 · 7:50 AM" },
-    { id:"il31", product:"Rebisco Biscuit",        emoji:"🍪", type:"OUT", qty:2,  before:40, after:38, by:"System",    time:"Jun 30, 2026 · 8:40 AM" },
-    { id:"il32", product:"Nescafé 3-in-1",         emoji:"☕", type:"OUT", qty:3,  before:59, after:56, by:"System",    time:"Jun 30, 2026 · 10:30 AM"},
-    { id:"il33", product:"Nescafé 3-in-1",         emoji:"☕", type:"OUT", qty:3,  before:56, after:53, by:"System",    time:"Jun 30, 2026 · 2:15 PM" },
-    // Jul 1 - today
-    { id:"il34", product:"Nova Chips",             emoji:"🥔", type:"OUT", qty:1,  before:37, after:36, by:"System",    time:"Jul 1, 2026 · 8:15 AM"  },
-    { id:"il35", product:"Coca-Cola 1.5L",         emoji:"🥤", type:"OUT", qty:1,  before:29, after:28, by:"System",    time:"Jul 1, 2026 · 9:00 AM"  },
-    { id:"il36", product:"Nescafé 3-in-1",         emoji:"☕", type:"OUT", qty:2,  before:53, after:51, by:"System",    time:"Jul 1, 2026 · 9:30 AM"  },
-    { id:"il37", product:"Milo Sachet",            emoji:"🥤", type:"OUT", qty:3,  before:68, after:65, by:"System",    time:"Jul 1, 2026 · 10:15 AM" },
-    { id:"il38", product:"SkyFlakes",              emoji:"🍪", type:"OUT", qty:2,  before:32, after:30, by:"System",    time:"Jul 1, 2026 · 10:15 AM" },
-    { id:"il39", product:"Royal TruOrange 1L",     emoji:"🥤", type:"OUT", qty:1,  before:13, after:12, by:"System",    time:"Jul 1, 2026 · 11:00 AM" },
-    { id:"il40", product:"Piattos Cheese",         emoji:"🥔", type:"OUT", qty:2,  before:19, after:17, by:"System",    time:"Jul 1, 2026 · 11:45 AM" },
-    { id:"il41", product:"C2 Apple 230ml",         emoji:"🧃", type:"OUT", qty:2,  before:23, after:21, by:"System",    time:"Jul 1, 2026 · 11:45 AM" },
-  ]);
+  const [inventoryLog, setInventoryLog] = useState([]);
+  useEffect(() => { fetchInventoryLog().then(setInventoryLog); }, []);
   const [newProduct, setNewProduct] = useState({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
   const [productDragOver, setProductDragOver] = useState(false);
   const productPhotoInputRef = useRef(null);
@@ -369,18 +286,50 @@ export default function KFCanteen() {
   }, []);
   const [productNameSuggestions, setProductNameSuggestions] = useState([]);
 
+  // raw materials
+  const [rawMaterials, setRawMaterials] = useState([]);
+  useEffect(() => { fetchRawMaterials().then(setRawMaterials); }, []);
+  const [rawMaterialLog, setRawMaterialLog] = useState([]);
+  useEffect(() => { fetchRawMaterialLog().then(setRawMaterialLog); }, []);
+  const [showAddRawMaterial, setShowAddRawMaterial] = useState(false);
+  const [newRawMaterial, setNewRawMaterial] = useState({ name:"", unit:"kg", buyPrice:"", stock:"" });
+  const [rawMaterialSearch, setRawMaterialSearch] = useState("");
+  const [rawStockModal, setRawStockModal] = useState(null);
+  const [rawStockAddVal, setRawStockAddVal] = useState("");
+
+  // dishes (recipes)
+  const [dishes, setDishes] = useState([]);
+  useEffect(() => { fetchDishes().then(setDishes); }, []);
+  const [showAddDish, setShowAddDish] = useState(false);
+  const [editDishId, setEditDishId] = useState(null);
+  const [newDish, setNewDish] = useState({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
+  const [dishDragOver, setDishDragOver] = useState(false);
+  const dishPhotoInputRef = useRef(null);
+  const handleDishPhotoFile = useCallback((file) => {
+    if(!file||!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setNewDish(p=>({...p, photo:e.target.result}));
+    reader.readAsDataURL(file);
+  }, []);
+  const [dishSearch, setDishSearch] = useState("");
+  const [dishLinkSearch, setDishLinkSearch] = useState("");
+
   // receipts
   const [receipts, setReceipts] = useState([]);
+  useEffect(() => { fetchReceipts().then(setReceipts); }, []);
   const [showAddReceipt, setShowAddReceipt] = useState(false);
-  const [newReceipt, setNewReceipt] = useState({ photo:null, date:new Date().toISOString().slice(0,10), amount:"", note:"" });
+  const [newReceipt, setNewReceipt] = useState({ date:toDateKey(new Date()), source:"Grocery", sourceName:"", purchaseType:"Grocery", note:"" });
+  const [receiptPhotos, setReceiptPhotos] = useState([]); // [{tempId, photo, amount}]
   const [receiptDragOver, setReceiptDragOver] = useState(false);
   const receiptPhotoInputRef = useRef(null);
   const [viewReceipt, setViewReceipt] = useState(null);
-  const handleReceiptPhotoFile = useCallback((file) => {
-    if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewReceipt(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
+  const handleReceiptPhotoFiles = useCallback((fileList) => {
+    Array.from(fileList||[]).forEach(file=>{
+      if(!file||!file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = (e) => setReceiptPhotos(prev=>[...prev, { tempId:"tmp"+Date.now()+Math.random(), photo:e.target.result, amount:"" }]);
+      reader.readAsDataURL(file);
+    });
   }, []);
 
 
@@ -393,15 +342,6 @@ export default function KFCanteen() {
     orderCounter.current += 1;
     return "KF" + String(orderCounter.current).padStart(6, "0");
   };
-  const handleLoginWith = (username, password) => {
-    const found = users.find(u=>u.username===username && u.password===password && u.registered);
-    if(!found){ setLoginError("Invalid username or password."); return; }
-    const isReset = (new Date().getDate()===15 || new Date().getDate()===new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate());
-    setCurrentUser(isReset?{...found,creditBalance:found.creditLimit}:found);
-    if(isReset) setUsers(prev=>prev.map(u=>u.id===found.id?{...u,creditBalance:u.creditLimit}:u));
-    setLoginError("");
-    setActiveTab(found.role==="user"?"menu":found.role==="admin"?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
-  };
   const handleLogin = () => {
     const found = users.find(u=>u.username===loginForm.username && u.password===loginForm.password && u.registered);
     if (found) {
@@ -413,6 +353,7 @@ export default function KFCanteen() {
       if(day===15||day===lastDay) {
         updatedUser = {...found, creditBalance: found.creditLimit};
         setUsers(prev=>prev.map(u=>u.id===found.id?updatedUser:u));
+        dbUpdateUser(found.id,{creditBalance:found.creditLimit});
       }
       setCurrentUser(updatedUser);
       setLoginError("");
@@ -520,7 +461,64 @@ export default function KFCanteen() {
         XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
         // Download
-        var fileName = "KFCanteen_"+date.toISOString().slice(0,10)+"_"+filterLabel.replace(/ /g,"_")+".xlsx";
+        var fileName = "KFCanteen_"+toDateKey(date)+"_"+filterLabel.replace(/ /g,"_")+".xlsx";
+        XLSX.writeFile(wb, fileName);
+      };
+      script.onerror = function(){
+        alert("Could not load Excel library. Please check your internet connection.");
+      };
+      document.head.appendChild(script);
+    } catch(e) {
+      alert("Download failed: "+e.message);
+    }
+  };
+
+  /* ── DOWNLOAD EMPLOYEE EXPENSES AS XLSX ── */
+  const downloadExpensesExcel = (rows, periodLabel, exportType) => {
+    try {
+      var isCreditOnly = exportType==="credit";
+      var grandCash = rows.reduce(function(s,r){return s+r.cash;},0);
+      var grandCredit = rows.reduce(function(s,r){return s+r.credit;},0);
+      var grandPending = rows.reduce(function(s,r){return s+r.pending;},0);
+      var grandTotal = rows.reduce(function(s,r){return s+r.total;},0);
+
+      var script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      script.onload = function() {
+        var XLSX = window.XLSX;
+        var wb = XLSX.utils.book_new();
+        var wsData = [
+          ["KFCanteen - Employee "+(isCreditOnly?"Credit":"Expense")+" Report"],
+          ["Period", periodLabel],
+          [],
+        ];
+        if(isCreditOnly){
+          wsData.push(["ID Number","Name","Plant","Orders","Credit (₱)"]);
+          rows.forEach(function(r){
+            wsData.push([r.idNumber||"—", r.name, r.plant||"—", r.orderCount, r.credit]);
+          });
+          wsData.push([]);
+          wsData.push(["","","","GRAND TOTAL", grandCredit]);
+        } else {
+          wsData.push(["ID Number","Name","Plant","Orders","Cash (₱)","Credit (₱)","Pending (₱)","Total Spent (₱)"]);
+          rows.forEach(function(r){
+            wsData.push([r.idNumber||"—", r.name, r.plant||"—", r.orderCount, r.cash, r.credit, r.pending, r.total]);
+          });
+          wsData.push([]);
+          wsData.push(["","","","GRAND TOTAL", grandCash, grandCredit, grandPending, grandTotal]);
+        }
+
+        var ws = XLSX.utils.aoa_to_sheet(wsData);
+        ws["!cols"] = isCreditOnly
+          ? [{wch:14},{wch:22},{wch:14},{wch:9},{wch:14}]
+          : [{wch:14},{wch:22},{wch:14},{wch:9},{wch:12},{wch:12},{wch:12},{wch:15}];
+        var headerRowIdx = wsData.findIndex(function(r){ return r[0]==="ID Number"; });
+        var lastCol = isCreditOnly ? "E" : "H";
+        ws["!autofilter"] = { ref: "A"+(headerRowIdx+1)+":"+lastCol+(headerRowIdx+1+rows.length) };
+        ws["!freeze"] = { xSplit: 0, ySplit: headerRowIdx+1 };
+        XLSX.utils.book_append_sheet(wb, ws, isCreditOnly?"Credit":"Expenses");
+
+        var fileName = "KFCanteen_"+(isCreditOnly?"Credit":"Expenses")+"_"+periodLabel.replace(/[^A-Za-z0-9]+/g,"_")+".xlsx";
         XLSX.writeFile(wb, fileName);
       };
       script.onerror = function(){
@@ -535,22 +533,28 @@ export default function KFCanteen() {
   const handleRegister = () => {
     if(!registerForm.selectedUserId){ setRegisterError("Please select your name from the list."); return; }
     if(!registerForm.phone||!/^[0-9+\-\s]{7,15}$/.test(registerForm.phone)){ setRegisterError("Please enter a valid cellphone number."); return; }
+    if(!registerForm.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email)){ setRegisterError("Please enter a valid email address."); return; }
+    if(!registerForm.plant){ setRegisterError("Please select your assigned plant."); return; }
     if(!registerForm.password){ setRegisterError("Password is required."); return; }
     if(registerForm.password !== registerForm.confirmPassword){ setRegisterError("Passwords do not match."); return; }
     const emp = users.find(u=>u.id===registerForm.selectedUserId);
     if(!emp){ setRegisterError("Employee not found."); return; }
-    // Generate username from name (lowercase, no spaces)
-    const username = emp.name.toLowerCase().replace(/\s+/g,".").replace(/[^a-z.]/g,"");
-    setUsers(prev=>prev.map(u=>u.id===registerForm.selectedUserId?{
-      ...u,
-      username,
-      password: registerForm.password,
-      phone: registerForm.phone.trim(),
-      registered: true,
-    }:u));
-    setRegisterForm({ selectedUserId:"", phone:"", password:"", confirmPassword:"" });
+    setRegisterError("");
+    setShowRegisterConfirm(true);
+  };
+
+  const confirmRegister = () => {
+    const emp = users.find(u=>u.id===registerForm.selectedUserId);
+    if(!emp){ setRegisterError("Employee not found."); setShowRegisterConfirm(false); return; }
+    // Username is the employee's ID number — already enforced unique on import/add.
+    const username = (emp.idNumber||"").trim() || emp.name.toLowerCase().replace(/\s+/g,".").replace(/[^a-z.]/g,"");
+    const regPatch = { username, password: registerForm.password, phone: registerForm.phone.trim(), email: registerForm.email.trim(), plant: registerForm.plant, registered: true };
+    setUsers(prev=>prev.map(u=>u.id===registerForm.selectedUserId?{...u,...regPatch}:u));
+    dbUpdateUser(registerForm.selectedUserId, regPatch);
+    setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"" });
     setNameSearch("");
     setRegisterError("");
+    setShowRegisterConfirm(false);
     setShowRegister(false);
     setRegisterType(null);
   };
@@ -581,6 +585,7 @@ export default function KFCanteen() {
       isEmployee:false,
     };
     setUsers(prev=>[...prev, newUser]);
+    dbInsertUser(newUser);
     setOutsideForm({ name:"", email:"", phone:"", password:"", confirmPassword:"" });
     setOutsideError("");
     setShowRegister(false);
@@ -602,29 +607,51 @@ export default function KFCanteen() {
     if(!cart.length) return;
     const plant = orderPlant || currentUser.plant || "KF-Main";
     const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
-      date: new Date().toISOString().slice(0,10),
+      date: toDateKey(new Date()),
       plant: plant,
       items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
     setOrders(prev=>[order,...prev]);
-    const newBalance = Math.max(0, (currentUser.creditBalance||0) - cartTotal);
-    const updatedUser = {...currentUser, creditBalance: newBalance};
-    setCurrentUser(updatedUser);
-    setUsers(prev=>prev.map(u=>u.id===currentUser.id?updatedUser:u));
-    if(newBalance < 100) setCreditNotif(true);
+    dbInsertOrder(order);
     setOtherProducts(prev => {
       const updated = prev.map(p => {
         const cartItem = cart.find(c => c.id === p.id);
         if (!cartItem) return p;
         const newStock = Math.max(0, p.stock - cartItem.qty);
-        setInventoryLog(log=>[{
+        const logEntry = {
           id:"il"+Date.now()+p.id, product:p.name, emoji:p.emoji,
           type:"OUT", qty:cartItem.qty, before:p.stock, after:newStock,
           by:currentUser.name,
           time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
-        },...log]);
+        };
+        setInventoryLog(log=>[logEntry,...log]);
+        dbInsertLog(logEntry);
+        dbUpdateProduct(p.id, { stock:newStock, available: newStock>0 });
         return { ...p, stock: newStock, available: newStock > 0 };
       });
       return updated;
+    });
+    // deduct raw materials for any cart item linked to a dish recipe
+    cart.forEach(cartItem => {
+      if(!cartItem.dishId) return;
+      const dish = dishes.find(d=>d.id===cartItem.dishId);
+      if(!dish||!dish.ingredients) return;
+      dish.ingredients.forEach(ing => {
+        setRawMaterials(prev => prev.map(m => {
+          if(m.id!==ing.rawMaterialId) return m;
+          const usedQty = ing.quantity * cartItem.qty;
+          const newStock = Math.max(0, m.stock - usedQty);
+          const logEntry = {
+            id:"rml"+Date.now()+m.id, rawMaterial:m.name, unit:m.unit,
+            type:"OUT", qty:usedQty, before:m.stock, after:newStock,
+            by:currentUser.name,
+            time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+          };
+          setRawMaterialLog(log=>[logEntry,...log]);
+          dbInsertRawMaterialLog(logEntry);
+          dbUpdateRawMaterial(m.id, { stock:newStock });
+          return { ...m, stock:newStock };
+        }));
+      });
     });
     setCart([]);
     setOrderPlant("");
@@ -644,28 +671,35 @@ export default function KFCanteen() {
       weeks.forEach(weekKey=>{
         next[weekKey] = {...(next[weekKey]||{})};
         days.forEach(day=>{
-          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?parseFloat(newItem.grams):null };
+          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?parseFloat(newItem.grams):null, dishId:newItem.dishId||null };
           next[weekKey][day] = [...(next[weekKey][day]||[]), item];
+          dbInsertMenuItem(weekKey, day, item);
         });
       });
       return next;
     });
-    setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[]});
+    setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});
     setShowAddItem(null);
   };
-  const removeMenuItem = (weekKey,day,id) => setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].filter(i=>i.id!==id)}}));
-  const toggleAvail = (weekKey,day,id) => setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].map(i=>i.id===id?{...i,available:!i.available}:i)}}));
+  const removeMenuItem = (weekKey,day,id) => { setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].filter(i=>i.id!==id)}})); dbDeleteMenuItem(id); };
+  const toggleAvail = (weekKey,day,id) => {
+    const item = menu[weekKey]?.[day]?.find(i=>i.id===id);
+    setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].map(i=>i.id===id?{...i,available:!i.available}:i)}}));
+    if(item) dbUpdateMenuItem(id, { available: !item.available });
+  };
 
   const confirmPayment = (orderId, paymentType) => {
     const order = orders.find(o=>o.id===orderId);
     if(!order) return;
     // mark served + save payment type
     setOrders(prev=>prev.map(o=>o.id===orderId?{...o,paymentType}:o));
+    dbUpdateOrder(orderId, { paymentType });
     // if credit, deduct from user's credit balance
     if(paymentType==="Credit"){
       setUsers(prev=>prev.map(u=>{
         if(u.name!==order.user) return u;
         const newBal = Math.max(0,(u.creditBalance||0)-order.total);
+        dbUpdateUser(u.id, { creditBalance: newBal });
         // update currentUser too if it's them
         if(currentUser&&currentUser.name===u.name){
           const updated = {...currentUser, creditBalance:newBal};
@@ -682,33 +716,88 @@ export default function KFCanteen() {
     if(!newProduct.name||!newProduct.price||!newProduct.stock) return;
     const p = { id:"op"+Date.now(), name:newProduct.name, buyPrice:parseFloat(newProduct.buyPrice)||0, price:parseFloat(newProduct.price), emoji:newProduct.emoji||"🛍️", photo:newProduct.photo||null, isPhoto:!!newProduct.photo, category:newProduct.category||"Others", stock:parseInt(newProduct.stock), available:parseInt(newProduct.stock)>0 };
     setOtherProducts(prev=>[...prev, p]);
+    dbInsertProduct(p);
     setNewProduct({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
     setProductNameSuggestions([]);
     setShowAddProduct(false);
   };
-  const removeOtherProduct = (id) => setOtherProducts(prev=>prev.filter(p=>p.id!==id));
-  const toggleOtherAvail = (id) => setOtherProducts(prev=>prev.map(p=>p.id===id?{...p,available:!p.available}:p));
+  const removeOtherProduct = (id) => { setOtherProducts(prev=>prev.filter(p=>p.id!==id)); dbDeleteProduct(id); };
+  const toggleOtherAvail = (id) => {
+    const p = otherProducts.find(pp=>pp.id===id);
+    setOtherProducts(prev=>prev.map(p=>p.id===id?{...p,available:!p.available}:p));
+    if(p) dbUpdateProduct(id, { available: !p.available });
+  };
   const updateOtherStock = (id, delta) => setOtherProducts(prev=>prev.map(p=>{
     if(p.id!==id) return p;
     const newStock = Math.max(0, p.stock + delta);
+    dbUpdateProduct(id, { stock:newStock, available: newStock>0 });
     return {...p, stock:newStock, available: newStock>0};
   }));
 
-  const addReceipt = () => {
-    if(!newReceipt.photo) return;
-    setReceipts(prev=>[{
-      id:"rc"+Date.now(),
-      photo:newReceipt.photo,
-      date:newReceipt.date,
-      amount:newReceipt.amount?parseFloat(newReceipt.amount):null,
-      note:newReceipt.note,
-      by:currentUser.name,
-      uploadedAt: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
-    },...prev]);
-    setShowAddReceipt(false);
-    setNewReceipt({ photo:null, date:new Date().toISOString().slice(0,10), amount:"", note:"" });
+  /* ── RAW MATERIALS ── */
+  const addRawMaterial = () => {
+    if(!newRawMaterial.name||!newRawMaterial.unit) return;
+    const m = { id:"rm"+Date.now(), name:newRawMaterial.name, unit:newRawMaterial.unit, buyPrice:parseFloat(newRawMaterial.buyPrice)||0, stock:parseFloat(newRawMaterial.stock)||0 };
+    setRawMaterials(prev=>[...prev, m]);
+    dbInsertRawMaterial(m);
+    setNewRawMaterial({ name:"", unit:"kg", buyPrice:"", stock:"" });
+    setShowAddRawMaterial(false);
   };
-  const removeReceipt = (id) => setReceipts(prev=>prev.filter(r=>r.id!==id));
+  const removeRawMaterial = (id) => { setRawMaterials(prev=>prev.filter(m=>m.id!==id)); dbDeleteRawMaterial(id); };
+  const addRawStock = (id, qty) => {
+    const material = rawMaterials.find(m=>m.id===id);
+    if(!material||!qty||qty<=0) return;
+    const before = material.stock;
+    const after = before + qty;
+    setRawMaterials(prev=>prev.map(m=>m.id===id?{...m,stock:after}:m));
+    dbUpdateRawMaterial(id, { stock: after });
+    const logEntry = { id:"rml"+Date.now(), rawMaterial:material.name, unit:material.unit, type:"IN", qty, before, after, by:currentUser.name,
+      time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
+    setRawMaterialLog(prev=>[logEntry,...prev]);
+    dbInsertRawMaterialLog(logEntry);
+  };
+
+  /* ── DISHES (recipes) ── */
+  const saveDish = () => {
+    if(!newDish.name||!newDish.price) return;
+    const dishData = { name:newDish.name, cat:newDish.cat, price:parseFloat(newDish.price), img:newDish.photo||newDish.img||"🍽️", isPhoto:!!newDish.photo, grams:newDish.grams?parseFloat(newDish.grams):null };
+    const ingredients = newDish.ingredients.filter(i=>i.rawMaterialId&&i.quantity);
+    if(editDishId){
+      setDishes(prev=>prev.map(d=>d.id===editDishId?{...d,...dishData,ingredients}:d));
+      dbUpdateDish(editDishId, dishData, ingredients);
+    } else {
+      const dish = { id:"dish"+Date.now(), ...dishData, ingredients };
+      setDishes(prev=>[...prev, dish]);
+      dbInsertDish(dish);
+    }
+    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
+    setEditDishId(null);
+    setShowAddDish(false);
+  };
+  const removeDish = (id) => { setDishes(prev=>prev.filter(d=>d.id!==id)); dbDeleteDish(id); };
+
+  const addReceipts = () => {
+    if(!receiptPhotos.length) return;
+    const uploadedAt = new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    const newRows = receiptPhotos.map((p,i)=>({
+      id:"rc"+Date.now()+i,
+      photo:p.photo,
+      date:newReceipt.date,
+      amount:p.amount?parseFloat(p.amount):null,
+      note:newReceipt.note,
+      source:newReceipt.source,
+      sourceName:newReceipt.sourceName.trim()||null,
+      purchaseType:newReceipt.purchaseType,
+      by:currentUser.name,
+      uploadedAt,
+    }));
+    setReceipts(prev=>[...newRows,...prev]);
+    newRows.forEach(dbInsertReceipt);
+    setShowAddReceipt(false);
+    setReceiptPhotos([]);
+    setNewReceipt({ date:toDateKey(new Date()), source:"Grocery", sourceName:"", purchaseType:"Grocery", note:"" });
+  };
+  const removeReceipt = (id) => { setReceipts(prev=>prev.filter(r=>r.id!==id)); dbDeleteReceipt(id); };
 
   /* ── FILTERED ITEMS ── */
   const visibleItems = useMemo(()=>{
@@ -725,11 +814,22 @@ export default function KFCanteen() {
     return items;
   },[otherProducts,otherCat,searchQ]);
 
+  if (usersLoading) return (
+    <div style={{minHeight:600,display:"flex",alignItems:"center",justifyContent:"center",background:BG,fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <div style={{textAlign:"center",color:"#9CA3AF"}}>
+        <div style={{width:40,height:40,border:`3px solid ${PURPLE_LIGHT}`,borderTopColor:PURPLE,borderRadius:"50%",margin:"0 auto 12px",animation:"spin 0.8s linear infinite"}} />
+        <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+        Loading KFCanteen...
+      </div>
+    </div>
+  );
+
   /* ════════════════════════════════════════
      LOGIN SCREEN
   ════════════════════════════════════════ */
   if (!currentUser) return (
-    <div style={{minHeight:600,display:"flex",alignItems:"center",justifyContent:"center",background:BG,fontFamily:"'Inter',system-ui,sans-serif"}}>
+    <div style={{minHeight:600,display:"flex",flexDirection:"column",background:BG,fontFamily:"'Inter',system-ui,sans-serif"}}>
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"2rem 1rem"}}>
       <div style={{width:420,background:"#fff",borderRadius:20,boxShadow:"0 8px 40px rgba(0,0,0,0.10)",padding:"2.5rem 2.25rem"}}>
         {/* logo */}
         <div style={{textAlign:"center",marginBottom:"1.75rem"}}>
@@ -768,6 +868,47 @@ export default function KFCanteen() {
           </div>
         )}
 
+        {/* Registration review/confirm modal */}
+        {showRegisterConfirm&&(()=>{const emp=users.find(u=>u.id===registerForm.selectedUserId); return emp&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+            <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+              <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Confirm Your Details</div>
+                <button onClick={()=>setShowRegisterConfirm(false)}
+                  style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </div>
+              <div style={{padding:"22px"}}>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:16}}>Please check that everything below is correct before completing your registration.</div>
+                <div style={{background:"#F9FAFB",borderRadius:12,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    {label:"Name", value:emp.name},
+                    {label:"ID Number", value:emp.idNumber||"—"},
+                    {label:"Username", value:(emp.idNumber||"").trim()||"(from name)"},
+                    {label:"Cellphone Number", value:registerForm.phone},
+                    {label:"Email Address", value:registerForm.email},
+                    {label:"Assigned Plant", value:registerForm.plant},
+                  ].map(row=>(
+                    <div key={row.label} style={{display:"flex",justifyContent:"space-between",gap:12}}>
+                      <span style={{fontSize:12,color:"#9CA3AF",fontWeight:600}}>{row.label}</span>
+                      <span style={{fontSize:13,color:"#111",fontWeight:600,textAlign:"right"}}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:10,marginTop:20}}>
+                  <button onClick={()=>setShowRegisterConfirm(false)}
+                    style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:10,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:700}}>
+                    Edit Details
+                  </button>
+                  <button onClick={confirmRegister}
+                    style={{flex:1,background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:700}}>
+                    Confirm & Register
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );})()}
+
         {!showRegister ? (
           <>
             <div style={{marginBottom:14}}>
@@ -791,7 +932,18 @@ export default function KFCanteen() {
             {loginError && <p style={{color:"#EF4444",fontSize:12,margin:"6px 0 0",display:"flex",alignItems:"center",gap:5}}>⚠️ {loginError}</p>}
             <button onClick={handleLogin} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:18}}>Sign In</button>
             <p style={{textAlign:"center",marginTop:16,fontSize:13,color:"#9CA3AF"}}>
-              Don't have an account? <span onClick={()=>{setShowEmployeeCheck(true);setLoginError("");}} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Create Account</span>
+              Don't have an account? <span onClick={()=>{
+                setShowEmployeeCheck(true);
+                setLoginError("");
+                // Clear any leftover state from a previous registration attempt
+                setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"" });
+                setNameSearch("");
+                setNameSuggestions([]);
+                setRegisterError("");
+                setShowRegisterConfirm(false);
+                setOutsideForm({ name:"", email:"", phone:"", password:"", confirmPassword:"" });
+                setOutsideError("");
+              }} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Create Account</span>
             </p>
           </>
         ) : registerType==="outside" ? (
@@ -860,27 +1012,26 @@ export default function KFCanteen() {
             {/* Step 1: Search name */}
             {!registerForm.selectedUserId ? (
               <div style={{position:"relative"}}>
-                <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Search Your Name</label>
+                <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Search Your ID Number</label>
                 <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:10,padding:"10px 14px",background:"#fff"}}>
                   <Icon name="search" size={16} color="#9CA3AF" />
                   <input value={nameSearch}
                     onChange={e=>{
                       const v=e.target.value; setNameSearch(v);
                       if(v.trim().length>=2){
-                        setNameSuggestions(users.filter(u=>!u.registered&&(
-                          u.name.toLowerCase().includes(v.toLowerCase()) ||
+                        setNameSuggestions(users.filter(u=>!u.registered&&
                           (u.idNumber||"").toLowerCase().includes(v.toLowerCase())
-                        )));
+                        ));
                       } else setNameSuggestions([]);
                     }}
-                    placeholder="Type your name to search..."
+                    placeholder="Type your ID number to search..."
                     style={{border:"none",outline:"none",fontSize:14,color:"#111",width:"100%",background:"none"}} />
                 </div>
                 <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Only employees added by admin can register</div>
                 {nameSuggestions.length>0&&(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:200,overflow:"hidden",marginTop:2}}>
                     {nameSuggestions.map(u=>(
-                      <button key={u.id} onMouseDown={()=>{setRegisterForm(p=>({...p,selectedUserId:u.id}));setNameSearch(u.name);setNameSuggestions([]);}}
+                      <button key={u.id} onMouseDown={()=>{setRegisterForm(p=>({...p,selectedUserId:u.id,plant:u.plant||""}));setNameSearch(u.name);setNameSuggestions([]);}}
                         style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",border:"none",borderBottom:"1px solid #F3F4F6",background:"none",cursor:"pointer",textAlign:"left"}}>
                         <div style={{width:36,height:36,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:PURPLE,flexShrink:0}}>{u.avatar}</div>
                         <div>
@@ -916,7 +1067,7 @@ export default function KFCanteen() {
                         <span style={{color:PURPLE,fontWeight:600}}>{emp.plant}</span>
                       </div>
                     </div>
-                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:""}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
+                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:"",plant:""}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
                   </div>
                 );})()}
 
@@ -926,6 +1077,29 @@ export default function KFCanteen() {
                   <input value={registerForm.phone} onChange={e=>setRegisterForm(p=>({...p,phone:e.target.value}))}
                     placeholder="e.g. 09171234567" type="tel" maxLength={15}
                     style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
+                </div>
+
+                {/* Email */}
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Email Address</label>
+                  <input value={registerForm.email} onChange={e=>setRegisterForm(p=>({...p,email:e.target.value}))}
+                    placeholder="e.g. juan.delacruz@email.com" type="email"
+                    style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
+                </div>
+
+                {/* Assigned Plant */}
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Which plant are you assigned to?</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {PLANTS.map(p=>(
+                      <label key={p} onClick={()=>setRegisterForm(prev=>({...prev,plant:p}))}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,border:registerForm.plant===p?"1.5px solid "+PURPLE:"1.5px solid #E5E7EB",background:registerForm.plant===p?PURPLE_LIGHT:"#fff",cursor:"pointer"}}>
+                        <input type="radio" name="registerPlant" checked={registerForm.plant===p} onChange={()=>setRegisterForm(prev=>({...prev,plant:p}))}
+                          style={{accentColor:PURPLE,width:16,height:16,cursor:"pointer"}} />
+                        <span style={{fontSize:14,fontWeight:600,color:registerForm.plant===p?PURPLE:"#374151"}}>{p}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Password */}
@@ -971,54 +1145,9 @@ export default function KFCanteen() {
           </>
         )}
 
-        {/* demo hint — only on login */}
-        {!showRegister&&(
-          <div style={{marginTop:16,borderTop:"1px solid #F3F4F6",paddingTop:14}}>
-            <p style={{fontSize:11,color:"#9CA3AF",margin:"0 0 8px",textTransform:"uppercase",letterSpacing:"0.6px",fontWeight:600}}>Quick login</p>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {/* Row 1: Admin roles */}
-              <div style={{display:"flex",gap:6}}>
-                {[
-                  {label:"Admin",       u:"admin",      p:"admin123", c:PURPLE},
-                  {label:"Staff-Admin", u:"staffadmin", p:"sa123",    c:"#92400E"},
-                  {label:"Customer",    u:"juan",       p:"user123",  c:"#059669"},
-                ].map(a=>(
-                  <button key={a.u} onClick={()=>{setLoginForm({username:a.u,password:a.p});setLoginError("");handleLoginWith(a.u,a.p);}}
-                    style={{flex:1,background:a.c+"12",color:a.c,border:"1px solid "+a.c+"33",borderRadius:8,padding:"7px 8px",cursor:"pointer",fontSize:12,fontWeight:600}}>
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-              {/* Row 2: Staff per plant */}
-              <div style={{display:"flex",gap:6}}>
-                {[
-                  {label:"Staff-Main",  u:"staff.main", p:"main123",  c:"#0891B2"},
-                  {label:"Staff-CT",    u:"staff.ct",   p:"ct123",    c:"#0891B2"},
-                  {label:"Staff-GLB",   u:"staff.kg",   p:"kg123",    c:"#0891B2"},
-                ].map(a=>(
-                  <button key={a.u} onClick={()=>{setLoginForm({username:a.u,password:a.p});setLoginError("");handleLoginWith(a.u,a.p);}}
-                    style={{flex:1,background:a.c+"12",color:a.c,border:"1px solid "+a.c+"33",borderRadius:8,padding:"7px 8px",cursor:"pointer",fontSize:12,fontWeight:600}}>
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-              {/* Row 3: Customer per plant */}
-              <div style={{display:"flex",gap:6}}>
-                {[
-                  {label:"Cust-Main",  u:"juan",  p:"user123",  c:"#059669"},
-                  {label:"Cust-CT",    u:"maria", p:"user456",  c:"#059669"},
-                  {label:"Cust-GLB",   u:"paulo", p:"paulo123", c:"#059669"},
-                ].map(a=>(
-                  <button key={a.u} onClick={()=>{setLoginForm({username:a.u,password:a.p});setLoginError("");handleLoginWith(a.u,a.p);}}
-                    style={{flex:1,background:a.c+"12",color:a.c,border:"1px solid "+a.c+"33",borderRadius:8,padding:"7px 8px",cursor:"pointer",fontSize:12,fontWeight:600}}>
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+    </div>
+    <Footer />
     </div>
   );
 
@@ -1588,7 +1717,7 @@ export default function KFCanteen() {
                     {(newItem.days&&newItem.days.length?newItem.days.join(", "):mgDay)} · Week {(newItem.weeks&&newItem.weeks.length?newItem.weeks:[mgWeekKey]).map(wk=>wk.split("-")[1]).join(", ")} · {newItem.cat}
                   </div>
                 </div>
-                <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[]});}}
+                <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});setDishLinkSearch("");}}
                   style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
               </div>
               <div style={{padding:"22px"}}>
@@ -1633,6 +1762,48 @@ export default function KFCanteen() {
                   </div>
                   <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Item will be added to the selected week(s) × day(s) combination.</div>
                 </div>
+                <div style={{marginBottom:18,position:"relative"}}>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Link to Dish <span style={{fontWeight:400,color:"#9CA3AF"}}>(optional — enables raw material tracking)</span></label>
+                  {newItem.dishId ? (()=>{ const linked = dishes.find(d=>d.id===newItem.dishId); return linked && (
+                    <div style={{display:"flex",alignItems:"center",gap:10,background:PURPLE_LIGHT,borderRadius:10,padding:"10px 14px"}}>
+                      <div style={{width:36,height:36,borderRadius:8,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",fontSize:20}}>
+                        {linked.isPhoto&&linked.img ? <img src={linked.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} /> : linked.img}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#111"}}>{linked.name}</div>
+                        <div style={{fontSize:11,color:PURPLE}}>{linked.cat} · ₱{linked.price} · {linked.ingredients.length} ingredient{linked.ingredients.length!==1?"s":""}</div>
+                      </div>
+                      <button onClick={()=>setNewItem(p=>({...p,dishId:null,name:"",price:"",img:"🍽️",photo:null,cat:"LUNCH",grams:""}))}
+                        style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#6B7280"}}>Unlink</button>
+                    </div>
+                  );})() : (
+                    <>
+                      <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"9px 12px",background:"#fff"}}>
+                        <Icon name="search" size={14} color="#9CA3AF" />
+                        <input value={dishLinkSearch} onChange={e=>setDishLinkSearch(e.target.value)} placeholder="Search dish catalog..."
+                          style={{border:"none",outline:"none",fontSize:13,color:"#111",width:"100%",background:"none"}} />
+                      </div>
+                      {dishLinkSearch.trim().length>=1&&(
+                        <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:250,overflow:"hidden",marginTop:2,maxHeight:180,overflowY:"auto"}}>
+                          {dishes.filter(d=>d.name.toLowerCase().includes(dishLinkSearch.toLowerCase())).map(d=>(
+                            <button key={d.id} onMouseDown={()=>{
+                              setNewItem(p=>({...p,dishId:d.id,name:d.name,price:String(d.price),cat:d.cat||"LUNCH",img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):""}));
+                              setDishLinkSearch("");
+                            }} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 12px",border:"none",borderBottom:"1px solid #F3F4F6",background:"none",cursor:"pointer",textAlign:"left"}}>
+                              <span style={{fontSize:18}}>{d.isPhoto?"🍽️":d.img}</span>
+                              <span style={{fontSize:13,fontWeight:600,color:"#111"}}>{d.name}</span>
+                              <span style={{fontSize:11,color:"#9CA3AF",marginLeft:"auto"}}>{d.cat}</span>
+                            </button>
+                          ))}
+                          {dishes.filter(d=>d.name.toLowerCase().includes(dishLinkSearch.toLowerCase())).length===0&&(
+                            <div style={{padding:"10px 12px",fontSize:12,color:"#9CA3AF"}}>No dishes found. Create one in Manage Dishes, or fill in a custom item below.</div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                {!newItem.dishId&&(<>
                 <div style={{marginBottom:18}}>
                   <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Item Photo</label>
                   <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
@@ -1683,8 +1854,9 @@ export default function KFCanteen() {
                     <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>This will be shown to customers on the menu card</div>
                   </div>
                 </div>
+                </>)}
                 <div style={{display:"flex",gap:10,marginTop:4}}>
-                  <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[]});}}
+                  <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});setDishLinkSearch("");}}
                     style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
                   {(()=>{
                     const dayCount = newItem.days&&newItem.days.length?newItem.days.length:1;
@@ -1960,12 +2132,14 @@ export default function KFCanteen() {
                       const before = stockModal.stock;
                       const after = before + qty;
                       updateOtherStock(stockModal.id, qty);
-                      setInventoryLog(prev=>[{
+                      const stockLogEntry = {
                         id:"il"+Date.now(), product:stockModal.name, emoji:stockModal.emoji,
                         type:"IN", qty, before, after,
                         by:currentUser.name,
                         time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
-                      },...prev]);
+                      };
+                      setInventoryLog(prev=>[stockLogEntry,...prev]);
+                      dbInsertLog(stockLogEntry);
                       setStockModal(null);setStockAddVal("");
                     }} disabled={!stockAddVal||parseInt(stockAddVal)<=0}
                       style={{flex:2,background:stockAddVal&&parseInt(stockAddVal)>0?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:stockAddVal&&parseInt(stockAddVal)>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
@@ -2174,6 +2348,337 @@ export default function KFCanteen() {
       );
     }
 
+    /* ── RAW MATERIALS (admin/staff-admin) ── */
+    if(activeTab==="rawmaterials") {
+      const displayedMaterials = rawMaterials.filter(m=>m.name.toLowerCase().includes(rawMaterialSearch.toLowerCase()));
+      const totalValue = rawMaterials.reduce((s,m)=>s+m.stock*m.buyPrice,0);
+      return (
+        <div>
+          {/* Add Stock modal */}
+          {rawStockModal&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Stock</div>
+                  <button onClick={()=>{setRawStockModal(null);setRawStockAddVal("");}} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                </div>
+                <div style={{padding:"24px 22px"}}>
+                  <div style={{background:"#F9FAFB",borderRadius:10,padding:"12px 16px",marginBottom:20}}>
+                    <div style={{fontWeight:700,fontSize:15,color:"#111"}}>{rawStockModal.name}</div>
+                    <div style={{fontSize:12,color:"#6B7280"}}>Current stock: <strong style={{color:PURPLE}}>{rawStockModal.stock} {rawStockModal.unit}</strong></div>
+                  </div>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>How much to add ({rawStockModal.unit})?</label>
+                  <input value={rawStockAddVal} onChange={e=>setRawStockAddVal(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter"&&rawStockAddVal){addRawStock(rawStockModal.id,parseFloat(rawStockAddVal)||0);setRawStockModal(null);setRawStockAddVal("");}}}
+                    type="number" min="0" step="0.01" placeholder="e.g. 10" autoFocus
+                    style={{width:"100%",fontSize:18,fontWeight:700,padding:"12px 14px",borderRadius:9,border:`1.5px solid ${PURPLE}`,background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",textAlign:"center"}} />
+                  {rawStockAddVal&&parseFloat(rawStockAddVal)>0&&(
+                    <div style={{marginTop:10,background:PURPLE_LIGHT,borderRadius:8,padding:"8px 12px",textAlign:"center",fontSize:13,color:PURPLE,fontWeight:600}}>
+                      New stock will be: {rawStockModal.stock + (parseFloat(rawStockAddVal)||0)} {rawStockModal.unit}
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:10,marginTop:16}}>
+                    <button onClick={()=>{setRawStockModal(null);setRawStockAddVal("");}} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                    <button onClick={()=>{addRawStock(rawStockModal.id,parseFloat(rawStockAddVal)||0);setRawStockModal(null);setRawStockAddVal("");}} disabled={!rawStockAddVal||parseFloat(rawStockAddVal)<=0}
+                      style={{flex:2,background:rawStockAddVal&&parseFloat(rawStockAddVal)>0?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:rawStockAddVal&&parseFloat(rawStockAddVal)>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                      + Add Stock
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
+            <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
+              <Icon name="scale" size={20} color={PURPLE} /> Raw Materials
+            </h2>
+            <button onClick={()=>setShowAddRawMaterial(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              <Icon name="plus" size={14} color="#fff" /> Add Raw Material
+            </button>
+          </div>
+
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+              <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{rawMaterials.length}</span>
+              <span style={{fontSize:11,color:"#6B7280",fontWeight:600,textAlign:"center"}}>Total Materials</span>
+            </div>
+            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+              <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>₱{totalValue.toFixed(2)}</span>
+              <span style={{fontSize:11,color:"#6B7280",fontWeight:600,textAlign:"center"}}>Total Stock Value</span>
+            </div>
+          </div>
+
+          <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220,maxWidth:320,marginBottom:16}}>
+            <Icon name="search" size={15} color="#9CA3AF" />
+            <input value={rawMaterialSearch} onChange={e=>setRawMaterialSearch(e.target.value)} placeholder="Search raw materials..."
+              style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+            {rawMaterialSearch&&<button onClick={()=>setRawMaterialSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {displayedMaterials.map(m=>(
+              <div key={m.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:44,height:44,borderRadius:10,background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon name="scale" size={20} color={PURPLE} />
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{m.name}</div>
+                  <div style={{fontSize:12,color:"#6B7280"}}>₱{m.buyPrice.toFixed(2)} / {m.unit}</div>
+                </div>
+                <div style={{textAlign:"center",minWidth:70}}>
+                  <div style={{fontSize:16,fontWeight:800,color:"#111"}}>{m.stock}</div>
+                  <div style={{fontSize:10,color:"#9CA3AF"}}>{m.unit} in stock</div>
+                </div>
+                <button onClick={()=>{setRawStockModal(m);setRawStockAddVal("");}}
+                  style={{background:PURPLE_LIGHT,color:PURPLE,border:`1px solid ${PURPLE}44`,borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                  <Icon name="plus" size={12} color={PURPLE} /> Add Stock
+                </button>
+                <button onClick={()=>removeRawMaterial(m.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500,flexShrink:0}}>
+                  <Icon name="trash" size={13} color="#991B1B" /> Remove
+                </button>
+              </div>
+            ))}
+            {displayedMaterials.length===0&&<Empty msg="No raw materials found" sub="Add ingredients like rice, meat, or vegetables to start tracking recipes." />}
+          </div>
+
+          {/* Add Raw Material modal */}
+          {showAddRawMaterial&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Raw Material</div>
+                  <button onClick={()=>{setShowAddRawMaterial(false);setNewRawMaterial({name:"",unit:"kg",buyPrice:"",stock:""});}}
+                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                </div>
+                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
+                  <div>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Name</label>
+                    <input value={newRawMaterial.name} onChange={e=>setNewRawMaterial(p=>({...p,name:e.target.value}))} placeholder="e.g. Rice"
+                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    <div>
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Unit</label>
+                      <select value={newRawMaterial.unit} onChange={e=>setNewRawMaterial(p=>({...p,unit:e.target.value}))}
+                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+                        {["kg","g","L","ml","pcs"].map(u=><option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Cost per Unit (₱)</label>
+                      <input value={newRawMaterial.buyPrice} onChange={e=>setNewRawMaterial(p=>({...p,buyPrice:e.target.value}))} placeholder="0.00" type="number" min="0" step="0.01"
+                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Initial Stock</label>
+                    <input value={newRawMaterial.stock} onChange={e=>setNewRawMaterial(p=>({...p,stock:e.target.value}))} placeholder="0" type="number" min="0" step="0.01"
+                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                  </div>
+                  <div style={{display:"flex",gap:10,marginTop:4}}>
+                    <button onClick={()=>{setShowAddRawMaterial(false);setNewRawMaterial({name:"",unit:"kg",buyPrice:"",stock:""});}}
+                      style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                    <button onClick={addRawMaterial} disabled={!newRawMaterial.name}
+                      style={{flex:2,background:newRawMaterial.name?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newRawMaterial.name?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <Icon name="plus" size={15} color="#fff" /> Add Material
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ── DISHES (recipes, admin/staff-admin) ── */
+    if(activeTab==="dishes") {
+      const displayedDishes = dishes.filter(d=>d.name.toLowerCase().includes(dishSearch.toLowerCase()));
+      const costOf = (dish) => (dish.ingredients||[]).reduce((s,ing)=>{
+        const m = rawMaterials.find(rm=>rm.id===ing.rawMaterialId);
+        return s + (m ? m.buyPrice*ing.quantity : 0);
+      },0);
+      const openAddDish = () => { setEditDishId(null); setNewDish({name:"",cat:"LUNCH",price:"",img:"🍽️",photo:null,grams:"",ingredients:[]}); setShowAddDish(true); };
+      const openEditDish = (d) => { setEditDishId(d.id); setNewDish({name:d.name,cat:d.cat||"LUNCH",price:String(d.price),img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):"",ingredients:d.ingredients.map(i=>({...i}))}); setShowAddDish(true); };
+      return (
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
+            <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
+              <Icon name="utensils" size={20} color={PURPLE} /> Manage Dishes
+            </h2>
+            <button onClick={openAddDish} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              <Icon name="plus" size={14} color="#fff" /> Add Dish
+            </button>
+          </div>
+          <div style={{fontSize:12,color:"#6B7280",background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+            💡 Dishes are reusable recipes. Link one to a weekly menu slot in <strong>Manage Menu → Add Item → Link to Dish</strong> to auto-deduct raw materials when customers order it.
+          </div>
+
+          <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220,maxWidth:320,marginBottom:16}}>
+            <Icon name="search" size={15} color="#9CA3AF" />
+            <input value={dishSearch} onChange={e=>setDishSearch(e.target.value)} placeholder="Search dishes..."
+              style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+            {dishSearch&&<button onClick={()=>setDishSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:12}}>
+            {displayedDishes.map(d=>{
+              const cost = costOf(d);
+              const profit = d.price - cost;
+              return (
+                <div key={d.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:44,height:44,borderRadius:10,background:PURPLE_LIGHT,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>
+                      {d.isPhoto&&d.img ? <img src={d.img} alt={d.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : d.img}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:14,color:"#111"}}>{d.name}</div>
+                      <div style={{fontSize:11,color:"#6B7280"}}>{d.cat} · ₱{d.price}</div>
+                    </div>
+                  </div>
+                  <div style={{fontSize:12,color:"#6B7280"}}>
+                    {d.ingredients&&d.ingredients.length>0 ? (
+                      <>{d.ingredients.length} ingredient{d.ingredients.length!==1?"s":""}: {d.ingredients.map(ing=>{
+                        const m = rawMaterials.find(rm=>rm.id===ing.rawMaterialId);
+                        return m ? `${m.name} (${ing.quantity}${m.unit})` : null;
+                      }).filter(Boolean).join(", ")}</>
+                    ) : <span style={{color:"#F59E0B"}}>No recipe set — won't deduct raw materials</span>}
+                  </div>
+                  {d.ingredients&&d.ingredients.length>0&&(
+                    <div style={{display:"flex",gap:10,fontSize:11,background:"#F9FAFB",borderRadius:8,padding:"6px 10px"}}>
+                      <span style={{color:"#EF4444"}}>Cost: ₱{cost.toFixed(2)}</span>
+                      <span style={{color:profit>=0?"#059669":"#EF4444"}}>Profit: ₱{profit.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:8,marginTop:4}}>
+                    <button onClick={()=>openEditDish(d)} style={{flex:1,background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                      <Icon name="edit" size={12} color={PURPLE} /> Edit
+                    </button>
+                    <button onClick={()=>removeDish(d.id)} style={{flex:1,background:"#FEE2E2",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:600}}>
+                      <Icon name="trash" size={12} color="#991B1B" /> Remove
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {displayedDishes.length===0&&<Empty msg="No dishes yet" sub="Create a dish and give it a recipe to start tracking raw materials." />}
+
+          {/* Add/Edit Dish modal */}
+          {showAddDish&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:540,maxHeight:"90vh",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{editDishId?"Edit Dish":"Add Dish"}</div>
+                  <button onClick={()=>{setShowAddDish(false);setEditDishId(null);}}
+                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                </div>
+                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto"}}>
+                  <div>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Dish Photo</label>
+                    <div onDragOver={e=>{e.preventDefault();setDishDragOver(true);}} onDragLeave={()=>setDishDragOver(false)}
+                      onDrop={e=>{e.preventDefault();setDishDragOver(false);handleDishPhotoFile(e.dataTransfer.files[0]);}}
+                      onClick={()=>dishPhotoInputRef.current?.click()}
+                      style={{border:`2px dashed ${dishDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:dishDragOver?PURPLE_LIGHT:"#FAFAFA",position:"relative",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
+                      {newDish.photo ? (
+                        <><img src={newDish.photo} alt="preview" style={{maxHeight:96,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
+                          <button onClick={e=>{e.stopPropagation();setNewDish(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                        </>
+                      ) : (
+                        <><div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
+                            <input value={newDish.img} onChange={e=>setNewDish(p=>({...p,img:e.target.value}))} onClick={e=>e.stopPropagation()} style={{width:48,fontSize:18,borderRadius:8,border:"1px solid #E5E7EB",padding:"3px 5px",textAlign:"center",background:"#fff"}} />
+                          </div>
+                        </>
+                      )}
+                      <input ref={dishPhotoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleDishPhotoFile(e.target.files[0])} />
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    <div style={{gridColumn:"1/-1"}}>
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Dish Name</label>
+                      <input value={newDish.name} onChange={e=>setNewDish(p=>({...p,name:e.target.value}))} placeholder="e.g. Adobo with Rice"
+                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    </div>
+                    <div>
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
+                      <select value={newDish.cat} onChange={e=>setNewDish(p=>({...p,cat:e.target.value}))} style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+                        {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Price (₱)</label>
+                      <input value={newDish.price} onChange={e=>setNewDish(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
+                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151"}}>Recipe (Raw Materials)</label>
+                      <button type="button" onClick={()=>setNewDish(p=>({...p,ingredients:[...p.ingredients,{id:"ing"+Date.now()+Math.random(),rawMaterialId:"",quantity:""}]}))}
+                        style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                        + Add Ingredient
+                      </button>
+                    </div>
+                    {newDish.ingredients.length===0&&<div style={{fontSize:12,color:"#9CA3AF",fontStyle:"italic"}}>No ingredients yet — this dish won't deduct raw materials on order.</div>}
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {newDish.ingredients.map((ing,idx)=>{
+                        const mat = rawMaterials.find(m=>m.id===ing.rawMaterialId);
+                        return (
+                          <div key={ing.id} style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <select value={ing.rawMaterialId} onChange={e=>{
+                              const v=e.target.value;
+                              setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,rawMaterialId:v}:i)}));
+                            }} style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+                              <option value="">Select raw material...</option>
+                              {rawMaterials.map(m=><option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+                            </select>
+                            <input value={ing.quantity} onChange={e=>{
+                              const v=e.target.value;
+                              setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,quantity:v}:i)}));
+                            }} type="number" min="0" step="0.01" placeholder="Qty"
+                              style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}} />
+                            <span style={{fontSize:12,color:"#9CA3AF",minWidth:24}}>{mat?mat.unit:""}</span>
+                            <button onClick={()=>setNewDish(p=>({...p,ingredients:p.ingredients.filter((_,ii)=>ii!==idx)}))}
+                              style={{background:"#FEE2E2",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:"#991B1B",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {newDish.ingredients.some(i=>i.rawMaterialId&&i.quantity)&&(()=>{
+                      const cost = newDish.ingredients.reduce((s,i)=>{
+                        const m = rawMaterials.find(rm=>rm.id===i.rawMaterialId);
+                        return s + (m&&i.quantity?m.buyPrice*parseFloat(i.quantity):0);
+                      },0);
+                      const profit = (parseFloat(newDish.price)||0) - cost;
+                      return (
+                        <div style={{marginTop:10,background:PURPLE_LIGHT,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",fontSize:12}}>
+                          <span style={{color:"#EF4444"}}>Cost per serving: ₱{cost.toFixed(2)}</span>
+                          <span style={{color:profit>=0?"#059669":"#EF4444",fontWeight:700}}>Profit: ₱{profit.toFixed(2)}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div style={{display:"flex",gap:10,marginTop:4}}>
+                    <button onClick={()=>{setShowAddDish(false);setEditDishId(null);}}
+                      style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                    <button onClick={saveDish} disabled={!newDish.name||!newDish.price}
+                      style={{flex:2,background:newDish.name&&newDish.price?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newDish.name&&newDish.price?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <Icon name="plus" size={15} color="#fff" /> {editDishId?"Save Changes":"Add Dish"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     /* ── RECEIPTS (staff-admin) ── */
     if(activeTab==="receipts") {
       const sortedReceipts = [...receipts].sort((a,b)=> new Date(b.date)-new Date(a.date));
@@ -2186,9 +2691,9 @@ export default function KFCanteen() {
               <Icon name="receipt" size={20} color={PURPLE} /> Receipts
             </h2>
             {role==="staff-admin"&&(
-              <button onClick={()=>{setNewReceipt({photo:null,date:new Date().toISOString().slice(0,10),amount:"",note:""});setShowAddReceipt(true);}}
+              <button onClick={()=>{setNewReceipt({date:toDateKey(new Date()),source:"Grocery",sourceName:"",purchaseType:"Grocery",note:""});setReceiptPhotos([]);setShowAddReceipt(true);}}
                 style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-                <Icon name="plus" size={14} color="#fff" /> Add Receipt
+                <Icon name="plus" size={14} color="#fff" /> Add Receipts
               </button>
             )}
           </div>
@@ -2213,9 +2718,14 @@ export default function KFCanteen() {
                   <img src={r.photo} alt="receipt" style={{width:"100%",height:"100%",objectFit:"cover"}} />
                 </div>
                 <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"#111"}}>
-                    {new Date(r.date+"T00:00:00").toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})}
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                    <div style={{fontWeight:700,fontSize:13,color:"#111"}}>
+                      {new Date(r.date+"T00:00:00").toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})}
+                    </div>
+                    {r.source&&<span style={{fontSize:10,background:r.source==="Supplier"?"#E0F2FE":PURPLE_LIGHT,color:r.source==="Supplier"?"#0369A1":PURPLE,fontWeight:600,padding:"1px 7px",borderRadius:8,whiteSpace:"nowrap"}}>{r.source}</span>}
                   </div>
+                  {r.sourceName&&<div style={{fontSize:11,color:"#6B7280",fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.sourceName}</div>}
+                  {r.purchaseType&&<span style={{alignSelf:"flex-start",fontSize:10,background:r.purchaseType==="Raw Materials"?"#FEF3C7":"#D1FAE5",color:r.purchaseType==="Raw Materials"?"#92400E":"#065F46",fontWeight:600,padding:"1px 7px",borderRadius:8,whiteSpace:"nowrap"}}>{r.purchaseType}</span>}
                   {r.amount!=null&&<div style={{fontSize:12,color:"#059669",fontWeight:600}}>₱{r.amount.toFixed(2)}</div>}
                   {r.note&&<div style={{fontSize:12,color:"#6B7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.note}</div>}
                   <div style={{fontSize:11,color:"#9CA3AF"}}>by {r.by}</div>
@@ -2228,35 +2738,51 @@ export default function KFCanteen() {
           </div>
           {sortedReceipts.length===0&&<Empty msg="No receipts yet" sub="Attach a photo of a purchase receipt to get started." />}
 
-          {/* ADD RECEIPT MODAL */}
+          {/* ADD RECEIPTS MODAL */}
           {showAddReceipt&&role==="staff-admin"&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
-                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Receipt</div>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:520,maxHeight:"90vh",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Receipts</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>Attach one or more photos — each becomes its own receipt</div>
+                  </div>
                   <button onClick={()=>setShowAddReceipt(false)}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                 </div>
-                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
+                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto"}}>
                   <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Receipt Photo</label>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Receipt Photos</label>
                     <div onDragOver={e=>{e.preventDefault();setReceiptDragOver(true);}} onDragLeave={()=>setReceiptDragOver(false)}
-                      onDrop={e=>{e.preventDefault();setReceiptDragOver(false);handleReceiptPhotoFile(e.dataTransfer.files[0]);}}
+                      onDrop={e=>{e.preventDefault();setReceiptDragOver(false);handleReceiptPhotoFiles(e.dataTransfer.files);}}
                       onClick={()=>receiptPhotoInputRef.current?.click()}
-                      style={{border:`2px dashed ${receiptDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.5rem",textAlign:"center",cursor:"pointer",background:receiptDragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",position:"relative",minHeight:160,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-                      {newReceipt.photo ? (
-                        <><img src={newReceipt.photo} alt="preview" style={{maxHeight:130,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
-                          <button onClick={e=>{e.stopPropagation();setNewReceipt(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                        </>
-                      ) : (
-                        <><div style={{width:48,height:48,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}><Icon name="receipt" size={22} color={PURPLE} /></div>
-                          <div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
-                          <div style={{fontSize:12,color:"#9CA3AF"}}>JPG, PNG, WEBP supported</div>
-                        </>
-                      )}
-                      <input ref={receiptPhotoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleReceiptPhotoFile(e.target.files[0])} />
+                      style={{border:`2px dashed ${receiptDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:receiptDragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <div style={{width:40,height:40,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="receipt" size={18} color={PURPLE} /></div>
+                      <div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photos here or click to browse</div>
+                      <div style={{fontSize:12,color:"#9CA3AF"}}>Select multiple files at once · JPG, PNG, WEBP</div>
+                      <input ref={receiptPhotoInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{handleReceiptPhotoFiles(e.target.files);e.target.value="";}} />
                     </div>
                   </div>
+
+                  {receiptPhotos.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{fontSize:12,fontWeight:600,color:"#374151"}}>{receiptPhotos.length} photo{receiptPhotos.length>1?"s":""} attached</div>
+                      {receiptPhotos.map(p=>(
+                        <div key={p.tempId} style={{display:"flex",alignItems:"center",gap:10,background:"#F9FAFB",borderRadius:10,padding:"8px 10px"}}>
+                          <img src={p.photo} alt="receipt" style={{width:48,height:48,borderRadius:8,objectFit:"cover",flexShrink:0}} />
+                          <div style={{flex:1,position:"relative"}}>
+                            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9CA3AF"}}>₱</span>
+                            <input value={p.amount} onChange={e=>{const v=e.target.value;setReceiptPhotos(prev=>prev.map(pp=>pp.tempId===p.tempId?{...pp,amount:v}:pp));}}
+                              placeholder="Amount (optional)" type="number" min="0" step="0.01"
+                              style={{width:"100%",fontSize:13,padding:"8px 10px 8px 24px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                          </div>
+                          <button onClick={()=>setReceiptPhotos(prev=>prev.filter(pp=>pp.tempId!==p.tempId))}
+                            style={{background:"#FEE2E2",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:"#991B1B",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                     <div>
                       <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Date</label>
@@ -2264,22 +2790,43 @@ export default function KFCanteen() {
                         style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
                     </div>
                     <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Amount (₱)</label>
-                      <input value={newReceipt.amount} onChange={e=>setNewReceipt(p=>({...p,amount:e.target.value}))} placeholder="Optional" type="number" min="0" step="0.01"
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Purchased From</label>
+                      <select value={newReceipt.source} onChange={e=>setNewReceipt(p=>({...p,source:e.target.value}))}
+                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+                        <option value="Grocery">Grocery</option>
+                        <option value="Supplier">Supplier</option>
+                      </select>
                     </div>
                   </div>
                   <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Note</label>
-                    <input value={newReceipt.note} onChange={e=>setNewReceipt(p=>({...p,note:e.target.value}))} placeholder="e.g. Stock restock for chips"
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>{newReceipt.source} Name <span style={{fontWeight:400,color:"#9CA3AF"}}>(optional)</span></label>
+                    <input value={newReceipt.sourceName} onChange={e=>setNewReceipt(p=>({...p,sourceName:e.target.value}))}
+                      placeholder={newReceipt.source==="Supplier"?"e.g. ABC Meat Supplier":"e.g. SM Supermarket"}
+                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                  </div>
+                  <div>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Purchase Type</label>
+                    <div style={{display:"flex",gap:8}}>
+                      {["Raw Materials","Grocery"].map(t=>(
+                        <button key={t} type="button" onClick={()=>setNewReceipt(p=>({...p,purchaseType:t}))}
+                          style={{flex:1,padding:"9px 12px",borderRadius:9,border:"1.5px solid "+(newReceipt.purchaseType===t?PURPLE:"#E5E7EB"),background:newReceipt.purchaseType===t?PURPLE:"#fff",color:newReceipt.purchaseType===t?"#fff":"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>What the purchase is for — ingredients for cooking vs. resale snacks/drinks.</div>
+                  </div>
+                  <div>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Note <span style={{fontWeight:400,color:"#9CA3AF"}}>(applies to all photos in this batch)</span></label>
+                    <input value={newReceipt.note} onChange={e=>setNewReceipt(p=>({...p,note:e.target.value}))} placeholder="e.g. Weekly stock restock"
                       style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
                   </div>
                   <div style={{display:"flex",gap:10,marginTop:4}}>
                     <button onClick={()=>setShowAddReceipt(false)}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                    <button onClick={addReceipt} disabled={!newReceipt.photo}
-                      style={{flex:2,background:newReceipt.photo?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newReceipt.photo?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                      <Icon name="plus" size={15} color="#fff" /> Save Receipt
+                    <button onClick={addReceipts} disabled={!receiptPhotos.length}
+                      style={{flex:2,background:receiptPhotos.length?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:receiptPhotos.length?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <Icon name="plus" size={15} color="#fff" /> Save {receiptPhotos.length||""} Receipt{receiptPhotos.length===1?"":"s"}
                     </button>
                   </div>
                 </div>
@@ -2300,6 +2847,10 @@ export default function KFCanteen() {
                 </div>
                 <img src={viewReceipt.photo} alt="receipt full" style={{width:"100%",maxHeight:420,objectFit:"contain",background:"#F9FAFB"}} />
                 <div style={{padding:"16px 22px",display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {viewReceipt.source&&<span style={{fontSize:11,background:viewReceipt.source==="Supplier"?"#E0F2FE":PURPLE_LIGHT,color:viewReceipt.source==="Supplier"?"#0369A1":PURPLE,fontWeight:600,padding:"2px 9px",borderRadius:10}}>{viewReceipt.source}{viewReceipt.sourceName?" · "+viewReceipt.sourceName:""}</span>}
+                    {viewReceipt.purchaseType&&<span style={{fontSize:11,background:viewReceipt.purchaseType==="Raw Materials"?"#FEF3C7":"#D1FAE5",color:viewReceipt.purchaseType==="Raw Materials"?"#92400E":"#065F46",fontWeight:600,padding:"2px 9px",borderRadius:10}}>{viewReceipt.purchaseType}</span>}
+                  </div>
                   {viewReceipt.amount!=null&&<div style={{fontSize:14,color:"#059669",fontWeight:700}}>₱{viewReceipt.amount.toFixed(2)}</div>}
                   {viewReceipt.note&&<div style={{fontSize:13,color:"#374151"}}>{viewReceipt.note}</div>}
                   <div style={{fontSize:12,color:"#9CA3AF"}}>Uploaded by {viewReceipt.by} · {viewReceipt.uploadedAt}</div>
@@ -2307,6 +2858,162 @@ export default function KFCanteen() {
               </div>
             </div>
           )}
+        </div>
+      );
+    }
+
+    /* ── EXPENSES (admin/staff-admin) ── */
+    if(activeTab==="expenses") {
+      const employees = users.filter(u=>u.isEmployee!==false&&u.registered);
+      const monthPrefix = expenseYear+"-"+String(expenseMonth+1).padStart(2,"0");
+      const monthOrders = orders.filter(o=>o.date&&o.date.startsWith(monthPrefix));
+      const monthLabel = new Date(expenseYear,expenseMonth).toLocaleDateString("en-PH",{month:"long",year:"numeric"});
+      const isCurrentMonth = expenseYear===TODAY_DATE.getFullYear()&&expenseMonth===TODAY_DATE.getMonth();
+
+      const rangeOrders = orders.filter(o=>o.date&&o.date>=expenseFromDate&&o.date<=expenseToDate);
+      const rangeLabel = formatDateFull(new Date(expenseFromDate+"T00:00:00"))+" – "+formatDateFull(new Date(expenseToDate+"T00:00:00"));
+
+      const periodOrders = expenseUseRange ? rangeOrders : monthOrders;
+      const periodLabel = expenseUseRange ? rangeLabel : monthLabel;
+
+      const allRows = employees.map(emp=>{
+        const empOrders = periodOrders.filter(o=>o.userId===emp.id);
+        const cash = empOrders.filter(o=>o.paymentType==="Cash").reduce((s,o)=>s+o.total,0);
+        const credit = empOrders.filter(o=>o.paymentType==="Credit").reduce((s,o)=>s+o.total,0);
+        const pending = empOrders.filter(o=>!o.paymentType).reduce((s,o)=>s+o.total,0);
+        return { id:emp.id, idNumber:emp.idNumber, name:emp.name, avatar:emp.avatar, plant:emp.plant, orderCount:empOrders.length, cash, credit, pending, total:cash+credit };
+      }).sort((a,b)=>b.total-a.total);
+
+      const rows = allRows.filter(r=>
+        r.name.toLowerCase().includes(expenseSearch.toLowerCase())||
+        (r.plant||"").toLowerCase().includes(expenseSearch.toLowerCase())||
+        (r.idNumber||"").toLowerCase().includes(expenseSearch.toLowerCase())
+      );
+
+      const grandCash = rows.reduce((s,r)=>s+r.cash,0);
+      const grandCredit = rows.reduce((s,r)=>s+r.credit,0);
+      const grandPending = rows.reduce((s,r)=>s+r.pending,0);
+      const grandTotal = rows.reduce((s,r)=>s+r.total,0);
+
+      return (
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
+            <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
+              <Icon name="expense" size={20} color={PURPLE} /> Employee Expenses
+            </h2>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <select value={expenseExportType} onChange={e=>setExpenseExportType(e.target.value)}
+                style={{padding:"9px 10px",borderRadius:9,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",background:"#fff",cursor:"pointer",fontWeight:600}}>
+                <option value="all">All Details</option>
+                <option value="credit">Credit Only</option>
+              </select>
+              <button onClick={()=>downloadExpensesExcel(rows, periodLabel, expenseExportType)} disabled={rows.length===0}
+                style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:rows.length===0?"not-allowed":"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,opacity:rows.length===0?0.6:1}}>
+                ⬇️ Download Excel
+              </button>
+            </div>
+          </div>
+
+          {/* period selector: calendar month vs custom range */}
+          <div style={{display:"flex",gap:4,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:4,marginBottom:12,width:"fit-content"}}>
+            <button onClick={()=>setExpenseUseRange(false)} style={{padding:"7px 16px",borderRadius:7,border:"none",background:!expenseUseRange?PURPLE:"transparent",color:!expenseUseRange?"#fff":"#6B7280",fontWeight:!expenseUseRange?700:400,fontSize:13,cursor:"pointer"}}>
+              Calendar Month
+            </button>
+            <button onClick={()=>setExpenseUseRange(true)} style={{padding:"7px 16px",borderRadius:7,border:"none",background:expenseUseRange?PURPLE:"transparent",color:expenseUseRange?"#fff":"#6B7280",fontWeight:expenseUseRange?700:400,fontSize:13,cursor:"pointer"}}>
+              Custom Range
+            </button>
+          </div>
+
+          {!expenseUseRange ? (
+            /* month navigator */
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"6px 6px"}}>
+                <button onClick={()=>{ if(expenseMonth===0){setExpenseMonth(11);setExpenseYear(y=>y-1);} else setExpenseMonth(m=>m-1); }}
+                  style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{"<"}</button>
+                <span style={{fontWeight:600,fontSize:14,color:"#374151",minWidth:150,textAlign:"center"}}>📅 {monthLabel}</span>
+                <button onClick={()=>{ if(expenseMonth===11){setExpenseMonth(0);setExpenseYear(y=>y+1);} else setExpenseMonth(m=>m+1); }}
+                  style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{">"}</button>
+              </div>
+              {isCurrentMonth
+                ? <span style={{fontSize:11,background:"#D1FAE5",color:"#065F46",padding:"2px 8px",borderRadius:10,fontWeight:600}}>This Month</span>
+                : <button onClick={()=>{setExpenseMonth(TODAY_DATE.getMonth());setExpenseYear(TODAY_DATE.getFullYear());}}
+                    style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:PURPLE,fontWeight:600}}>
+                    Back to This Month
+                  </button>
+              }
+            </div>
+          ) : (
+            /* custom date range */
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"8px 12px"}}>
+                <span style={{fontSize:12,color:"#6B7280",fontWeight:600}}>From</span>
+                <input type="date" value={expenseFromDate} max={expenseToDate} onChange={e=>setExpenseFromDate(e.target.value)}
+                  style={{border:"none",outline:"none",fontSize:13,color:"#111"}} />
+                <span style={{fontSize:12,color:"#6B7280",fontWeight:600}}>To</span>
+                <input type="date" value={expenseToDate} min={expenseFromDate} onChange={e=>setExpenseToDate(e.target.value)}
+                  style={{border:"none",outline:"none",fontSize:13,color:"#111"}} />
+              </div>
+            </div>
+          )}
+
+          {/* summary */}
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            {[
+              {label:"💵 Cash",      value:grandCash,    color:"#059669"},
+              {label:"💳 Credit",    value:grandCredit,  color:PURPLE},
+              {label:"⏳ Pending",   value:grandPending, color:"#F59E0B"},
+              {label:"Total Spent",  value:grandTotal,   color:"#111"},
+            ].map(s=>(
+              <div key={s.label} style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+                <span style={{fontSize:18,fontWeight:800,color:s.color}}>₱{s.value.toLocaleString()}</span>
+                <span style={{fontSize:11,color:"#6B7280",fontWeight:600,textAlign:"center"}}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* search */}
+          <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220,maxWidth:320,marginBottom:16}}>
+            <Icon name="search" size={15} color="#9CA3AF" />
+            <input value={expenseSearch} onChange={e=>setExpenseSearch(e.target.value)} placeholder="Search employee, plant, ID..."
+              style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+            {expenseSearch&&<button onClick={()=>setExpenseSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
+          </div>
+
+          {/* table */}
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:"#F9FAFB"}}>
+                  {["Employee","ID No.","Plant","Orders","Cash","Credit","Pending","Total Spent"].map(h=>(
+                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length===0&&<tr><td colSpan={8} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No employees found.</td></tr>}
+                {rows.map(r=>(
+                  <tr key={r.id} style={{borderBottom:"1px solid #F3F4F6"}}>
+                    <td style={{padding:"12px 14px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>{r.avatar}</div>
+                        <span style={{fontWeight:600,color:"#111",fontSize:13}}>{r.name}</span>
+                      </div>
+                    </td>
+                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,whiteSpace:"nowrap"}}>{r.idNumber||"—"}</td>
+                    <td style={{padding:"12px 14px"}}><span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20,whiteSpace:"nowrap"}}>{r.plant||"—"}</span></td>
+                    <td style={{padding:"12px 14px",color:"#374151",fontWeight:600}}>{r.orderCount}</td>
+                    <td style={{padding:"12px 14px",color:"#059669",fontWeight:600,whiteSpace:"nowrap"}}>₱{r.cash.toLocaleString()}</td>
+                    <td style={{padding:"12px 14px",color:PURPLE,fontWeight:600,whiteSpace:"nowrap"}}>₱{r.credit.toLocaleString()}</td>
+                    <td style={{padding:"12px 14px",color:r.pending>0?"#F59E0B":"#9CA3AF",fontWeight:600,whiteSpace:"nowrap"}}>₱{r.pending.toLocaleString()}</td>
+                    <td style={{padding:"12px 14px",color:"#111",fontWeight:700,whiteSpace:"nowrap"}}>₱{r.total.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:12,background:"#F9FAFB",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 14px",fontSize:12,color:"#6B7280"}}>
+            💡 "Total Spent" counts only paid orders (Cash + Credit). Pending shows orders placed but not yet paid.
+          </div>
         </div>
       );
     }
@@ -2357,13 +3064,12 @@ export default function KFCanteen() {
                       function doDownload() {
                         wb = window.XLSX.utils.book_new();
                         var wsData = [
-                          ["id_number","name","plant","role"],
-                          ["KF-24-0001","Juan dela Cruz","KF-Main","user"],
-                          ["CT-24-0002","Maria Santos","Colortree","user"],
-                          ["KG-24-0003","Paulo Fernandez","KF-Global","user"],
+                          ["SECTION/DEPT.","EMPLOYEE NO.","POSITION","EMPLOYEE NAME","COMPANY"],
+                          ["ACCOUNTING","KF-24-0001","STAFF","Juan Dela Cruz","KOU FU COLOR PRINTING CORPORATION"],
+                          ["QA","CT-24-0002","OPERATOR","Maria Santos","COLORTREE LABEL CORPORATION"],
                         ];
                         var ws = window.XLSX.utils.aoa_to_sheet(wsData);
-                        ws["!cols"] = [{wch:14},{wch:24},{wch:14},{wch:10}];
+                        ws["!cols"] = [{wch:16},{wch:14},{wch:14},{wch:24},{wch:32}];
                         window.XLSX.utils.book_append_sheet(wb, ws, "Employees");
                         window.XLSX.writeFile(wb, "KFCanteen_Employee_Template.xlsx");
                       }
@@ -2379,13 +3085,14 @@ export default function KFCanteen() {
 
                   {/* Column guide */}
                   <div style={{background:"#F9FAFB",borderRadius:10,padding:"12px 16px",marginBottom:18,fontSize:12}}>
-                    <div style={{fontWeight:700,color:"#374151",marginBottom:8}}>📋 Required Columns:</div>
+                    <div style={{fontWeight:700,color:"#374151",marginBottom:8}}>📋 Expected Columns (matches your HR export format):</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                       {[
-                        {col:"id_number", desc:"Employee ID (e.g. KF-24-0001)", req:true},
-                        {col:"name", desc:"Full name of employee", req:true},
-                        {col:"plant", desc:"KF-Main / Colortree / KF-Global", req:true},
-                        {col:"role", desc:"user / staff / staff-admin / admin", req:false},
+                        {col:"SECTION/DEPT.", desc:"Employee's department", req:true},
+                        {col:"EMPLOYEE NO.", desc:"Employee ID — must be unique", req:true},
+                        {col:"POSITION", desc:"Job title", req:false},
+                        {col:"EMPLOYEE NAME", desc:"Full name of employee", req:true},
+                        {col:"COMPANY", desc:"Employer company as shown in HR records", req:false},
                       ].map(c=>(
                         <div key={c.col} style={{display:"flex",gap:6,alignItems:"flex-start"}}>
                           <span style={{fontFamily:"monospace",background:"#E5E7EB",padding:"1px 6px",borderRadius:4,fontSize:11,flexShrink:0,color:"#374151"}}>{c.col}</span>
@@ -2393,7 +3100,7 @@ export default function KFCanteen() {
                         </div>
                       ))}
                     </div>
-                    <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Role defaults to "user" if empty.</div>
+                    <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Company is informational only — it does not set the Plant. Plant (KF-Main, Colortree, KF-Global) is assigned by an admin afterwards in the Employees table. Rows with an Employee No. that already exists in the system are skipped automatically to avoid duplicates.</div>
                   </div>
 
                   {/* Upload area */}
@@ -2413,20 +3120,41 @@ export default function KFCanteen() {
                             try {
                               var wb = window.XLSX.read(ev.target.result, {type:"binary"});
                               var ws = wb.Sheets[wb.SheetNames[0]];
-                              var rows = window.XLSX.utils.sheet_to_json(ws, {defval:""});
+                              var rows = window.XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
                               if(!rows.length){ setImportError("File is empty or unreadable."); return; }
-                              var valid = [], errors = [];
-                              rows.forEach(function(row, i) {
-                                var idNum = String(row.id_number||"").trim();
-                                var name = String(row.name||"").trim();
-                                var plant = String(row.plant||"").trim();
-                                var role = String(row.role||"user").trim()||"user";
-                                if(!idNum||!name||!plant){ errors.push("Row "+(i+2)+": missing required field"); return; }
-                                if(!["KF-Main","Colortree","KF-Global"].includes(plant)){ errors.push("Row "+(i+2)+": invalid plant '"+plant+"'"); return; }
-                                if(!["user","staff","staff-admin","admin"].includes(role)) role="user";
-                                valid.push({idNumber:idNum, name, plant, role, registered:false});
-                              });
-                              if(errors.length) { setImportError(errors.slice(0,3).join("\n")+(errors.length>3?"\n...and "+(errors.length-3)+" more":"")); }
+
+                              // normalize headers (trim + uppercase) so trailing spaces / minor
+                              // variants across different exports (e.g. "COMPANY " vs "COMPANY")
+                              // don't break column matching
+                              var headerIndex = {};
+                              (rows[0]||[]).forEach(function(h, idx){ headerIndex[String(h).trim().toUpperCase()] = idx; });
+                              function col(row, key) {
+                                var idx = headerIndex[key];
+                                return idx==null ? "" : String(row[idx]==null?"":row[idx]).trim();
+                              }
+
+                              var valid = [], errors = [], skippedDup = 0;
+                              var seenIds = {};
+                              for (var i=1; i<rows.length; i++) {
+                                var row = rows[i];
+                                if(!row || row.every(function(c){return String(c==null?"":c).trim()==="";})) continue;
+                                var idNum = col(row,"EMPLOYEE NO.") || col(row,"EMPLOYEE NO") || col(row,"ID_NUMBER") || col(row,"ID NUMBER");
+                                var name = col(row,"EMPLOYEE NAME") || col(row,"NAME");
+                                var department = col(row,"SECTION/DEPT.") || col(row,"SECTION/DEPT") || col(row,"DEPARTMENT");
+                                var position = col(row,"POSITION");
+                                var company = col(row,"COMPANY");
+
+                                if(!idNum||!name){ errors.push("Row "+(i+1)+": missing Employee No. or Employee Name"); continue; }
+                                if(seenIds[idNum]){ skippedDup++; continue; }
+                                if(users.some(function(u){ return (u.idNumber||"").trim()===idNum; })){ skippedDup++; continue; }
+
+                                seenIds[idNum] = true;
+                                // Plant is intentionally left unassigned here — an admin assigns
+                                // it manually afterwards (e.g. KF-Global has no source spreadsheet).
+                                valid.push({ idNumber:idNum, name:toProperCase(name), department, position, company, plant:"", role:"user" });
+                              }
+                              if(skippedDup>0){ errors.push(skippedDup+" row"+(skippedDup>1?"s":"")+" skipped — Employee No. already exists in the system."); }
+                              if(errors.length) { setImportError(errors.slice(0,5).join("\n")+(errors.length>5?"\n...and "+(errors.length-5)+" more":"")); }
                               setImportPreview(valid);
                             } catch(err) {
                               setImportError("Could not read file. Make sure it is a valid .xlsx file.");
@@ -2460,7 +3188,7 @@ export default function KFCanteen() {
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                           <thead>
                             <tr style={{background:"#F9FAFB"}}>
-                              {["ID Number","Name","Plant","Role"].map(h=>(
+                              {["ID Number","Name","Department","Position","Company"].map(h=>(
                                 <th key={h} style={{padding:"8px 12px",textAlign:"left",fontWeight:600,color:"#6B7280",borderBottom:"1px solid #E5E7EB"}}>{h}</th>
                               ))}
                             </tr>
@@ -2470,8 +3198,9 @@ export default function KFCanteen() {
                               <tr key={i} style={{borderBottom:"1px solid #F3F4F6"}}>
                                 <td style={{padding:"7px 12px",fontFamily:"monospace",color:"#374151"}}>{e.idNumber}</td>
                                 <td style={{padding:"7px 12px",fontWeight:600,color:"#111"}}>{e.name}</td>
-                                <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.plant}</td>
-                                <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500}}>{e.role}</td>
+                                <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.department||"—"}</td>
+                                <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.position||"—"}</td>
+                                <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500}}>{e.company||"—"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -2481,35 +3210,82 @@ export default function KFCanteen() {
                   )}
                 </div>
 
+                {/* Upload progress */}
+                {importSubmitting&&(
+                  <div style={{padding:"0 22px 14px",flexShrink:0}}>
+                    <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"12px 14px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                        <span style={{width:14,height:14,borderRadius:"50%",border:"2px solid "+PURPLE,borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}} />
+                        <span style={{fontSize:13,fontWeight:600,color:PURPLE}}>
+                          Uploading employees to database... {importProgress.done} of {importProgress.total} saved
+                        </span>
+                      </div>
+                      <div style={{width:"100%",height:8,borderRadius:6,background:"#fff",overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:6,background:PURPLE,width:(importProgress.total?Math.round(importProgress.done/importProgress.total*100):0)+"%",transition:"width 0.2s"}} />
+                      </div>
+                      <div style={{fontSize:11,color:"#6B7280",marginTop:6}}>Please don't close this window until the upload finishes.</div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Footer */}
                 <div style={{padding:"14px 22px",borderTop:"1px solid #E5E7EB",display:"flex",gap:10,flexShrink:0}}>
-                  <button onClick={()=>setShowImportModal(false)} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                  <button disabled={importPreview.length===0} onClick={()=>{
-                    var added = 0;
-                    importPreview.forEach(function(emp) {
-                      var exists = users.some(function(u){ return u.idNumber===emp.idNumber||u.name===emp.name; });
-                      if(!exists){
-                        setUsers(prev=>[...prev,{
-                          id:"u"+Date.now()+Math.random(),
-                          username:"",password:"",
-                          role:emp.role,
-                          name:emp.name,
-                          avatar:emp.name.split(" ").map(function(w){return w[0];}).join("").slice(0,2).toUpperCase(),
-                          plant:emp.plant,
-                          idNumber:emp.idNumber,
-                          phone:"",
-                          creditLimit:500,
-                          creditBalance:500,
-                          registered:false,
-                          isEmployee:true,
-                        }]);
-                        added++;
-                      }
+                  <button disabled={importSubmitting} onClick={()=>setShowImportModal(false)}
+                    style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:importSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:600,opacity:importSubmitting?0.6:1}}>Cancel</button>
+                  <button disabled={importPreview.length===0||importSubmitting} onClick={async ()=>{
+                    // Employee No. duplicates already filtered out while building the
+                    // preview; this re-check is just a safety net against the system
+                    // having changed since then.
+                    var toImport = importPreview.filter(function(emp) {
+                      return !users.some(function(u){ return (u.idNumber||"").trim()===emp.idNumber; });
                     });
+                    var newUsers = toImport.map(function(emp) {
+                      return {
+                        id:"u"+Date.now()+Math.random(),
+                        username:null,password:"",
+                        role:emp.role,
+                        name:emp.name,
+                        avatar:emp.name.split(" ").filter(Boolean).map(function(w){return w[0];}).join("").slice(0,2).toUpperCase(),
+                        plant:"",
+                        idNumber:emp.idNumber,
+                        department:emp.department||"",
+                        position:emp.position||"",
+                        company:emp.company||"",
+                        phone:"",
+                        creditLimit:500,
+                        creditBalance:500,
+                        registered:false,
+                        isEmployee:true,
+                      };
+                    });
+                    if(!newUsers.length){ setShowImportModal(false); setImportPreview([]); return; }
+                    var CHUNK_SIZE = 25;
+                    setImportSubmitting(true);
+                    setImportError("");
+                    setImportProgress({done:0, total:newUsers.length});
+                    var savedUsers = [];
+                    var failMsg = "";
+                    for(var i=0;i<newUsers.length;i+=CHUNK_SIZE){
+                      var chunk = newUsers.slice(i, i+CHUNK_SIZE);
+                      var result = await dbInsertUsers(chunk);
+                      if(!result.success){
+                        failMsg = result.error&&result.error.message ? result.error.message : "Unknown error";
+                        break;
+                      }
+                      savedUsers = savedUsers.concat(chunk);
+                      setImportProgress({done:savedUsers.length, total:newUsers.length});
+                    }
+                    setImportSubmitting(false);
+                    if(savedUsers.length) setUsers(prev=>[...prev,...savedUsers]);
+                    if(failMsg){
+                      setImportError("Saved "+savedUsers.length+" of "+newUsers.length+" employees, then stopped: "+failMsg+". The rest were not imported — you can re-upload the same file and already-saved Employee Nos. will be skipped automatically.");
+                      return;
+                    }
                     setShowImportModal(false);
                     setImportPreview([]);
-                  }} style={{flex:2,background:importPreview.length>0?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:importPreview.length>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-                    Import {importPreview.length>0?importPreview.length+" Employee"+(importPreview.length>1?"s":""):""}
+                    setImportProgress({done:0,total:0});
+                  }} style={{flex:2,background:(importPreview.length>0&&!importSubmitting)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(importPreview.length>0&&!importSubmitting)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                    {importSubmitting ? "Uploading..." : "Import "+(importPreview.length>0?importPreview.length+" Employee"+(importPreview.length>1?"s":""):"")}
                   </button>
                 </div>
               </div>
@@ -2583,23 +3359,35 @@ export default function KFCanteen() {
                       {(newEmployee.rows||[]).filter(r=>!r.name.trim()).length>0&&<span style={{color:"#F59E0B"}}>⚠️ {(newEmployee.rows||[]).filter(r=>!r.name.trim()).length} empty row{(newEmployee.rows||[]).filter(r=>!r.name.trim()).length>1?"s":""} will be skipped</span>}
                     </div>
                   )}
+                  {addEmployeeError&&(
+                    <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#991B1B"}}>
+                      ⚠️ {addEmployeeError}
+                    </div>
+                  )}
                   <div style={{display:"flex",gap:10}}>
-                    <button onClick={()=>{setShowAddEmployeeModal(false);setNewEmployee({name:"",plant:"KF-Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]});}}
+                    <button onClick={()=>{setShowAddEmployeeModal(false);setAddEmployeeError("");setNewEmployee({name:"",plant:"KF-Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]});}}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                    <button onClick={()=>{
+                    <button disabled={!(newEmployee.rows||[]).some(r=>r.name.trim())||addEmployeeSubmitting} onClick={async ()=>{
                       var validRows = (newEmployee.rows||[]).filter(r=>r.name.trim());
                       if(!validRows.length) return;
                       var newUsers = validRows.map(r=>{
                         var name=toProperCase(r.name);
                         var initials=name.split(" ").filter(Boolean).map(w=>w[0]).join("").toUpperCase().slice(0,2);
-                        return {id:"u"+Date.now()+Math.random(),username:"",password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),phone:"",creditLimit:1000,creditBalance:1000,registered:false,isEmployee:true};
+                        return {id:"u"+Date.now()+Math.random(),username:null,password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),phone:"",creditLimit:1000,creditBalance:1000,registered:false,isEmployee:true};
                       });
+                      setAddEmployeeSubmitting(true);
+                      setAddEmployeeError("");
+                      const result = await dbInsertUsers(newUsers);
+                      setAddEmployeeSubmitting(false);
+                      if(!result.success){
+                        setAddEmployeeError("Could not save to the database — nothing was added. "+(result.error&&result.error.message?result.error.message:"Please try again.")+" If this keeps happening, tell your admin to check the database setup.");
+                        return;
+                      }
                       setUsers(prev=>[...prev,...newUsers]);
                       setShowAddEmployeeModal(false);
                       setNewEmployee({name:"",plant:"KF-Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]});
-                    }} disabled={!(newEmployee.rows||[]).some(r=>r.name.trim())}
-                      style={{flex:2,background:(newEmployee.rows||[]).some(r=>r.name.trim())?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(newEmployee.rows||[]).some(r=>r.name.trim())?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-                      Save All Employees
+                    }} style={{flex:2,background:((newEmployee.rows||[]).some(r=>r.name.trim())&&!addEmployeeSubmitting)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:((newEmployee.rows||[]).some(r=>r.name.trim())&&!addEmployeeSubmitting)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                      {addEmployeeSubmitting?"Saving...":"Save All Employees"}
                     </button>
                   </div>
                 </div>
@@ -2645,31 +3433,132 @@ export default function KFCanteen() {
             </div>
           )}
 
+          {/* Bulk selection bar */}
+          {personnelSearch==="unregistered"&&selectedUnregisteredIds.length>0&&(
+            <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+              <span><strong>{selectedUnregisteredIds.length}</strong> employee{selectedUnregisteredIds.length>1?"s":""} selected</span>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setSelectedUnregisteredIds([])} style={{background:"#fff",color:"#6B7280",border:"1px solid #E5E7EB",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                  Clear
+                </button>
+                <button onClick={()=>{setShowBulkRemoveConfirm(true);setBulkRemoveError("");}} style={{background:"#EF4444",color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                  <Icon name="trash" size={13} color="#fff" /> Remove Selected
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk remove confirmation modal */}
+          {showBulkRemoveConfirm&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:400,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:"#EF4444",padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Remove Employees</div>
+                  <button disabled={bulkRemoveSubmitting} onClick={()=>setShowBulkRemoveConfirm(false)}
+                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:bulkRemoveSubmitting?"not-allowed":"pointer",color:"#fff",fontSize:18}}>×</button>
+                </div>
+                <div style={{padding:"22px"}}>
+                  <div style={{fontSize:14,color:"#374151",marginBottom:16,lineHeight:1.5}}>
+                    Remove <strong>{selectedUnregisteredIds.length}</strong> unregistered employee{selectedUnregisteredIds.length>1?"s":""}? This cannot be undone — they'll need to be re-added or re-imported.
+                  </div>
+                  {bulkRemoveError&&(
+                    <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#991B1B"}}>
+                      ⚠️ {bulkRemoveError}
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:10}}>
+                    <button disabled={bulkRemoveSubmitting} onClick={()=>setShowBulkRemoveConfirm(false)}
+                      style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:10,padding:"12px",cursor:bulkRemoveSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                      Cancel
+                    </button>
+                    <button disabled={bulkRemoveSubmitting} onClick={async ()=>{
+                      setBulkRemoveSubmitting(true);
+                      setBulkRemoveError("");
+                      const result = await dbDeleteUsers(selectedUnregisteredIds);
+                      setBulkRemoveSubmitting(false);
+                      if(!result.success){
+                        setBulkRemoveError("Could not remove — "+(result.error&&result.error.message?result.error.message:"unknown error")+". Please try again.");
+                        return;
+                      }
+                      setUsers(prev=>prev.filter(u=>!selectedUnregisteredIds.includes(u.id)));
+                      setSelectedUnregisteredIds([]);
+                      setShowBulkRemoveConfirm(false);
+                    }} style={{flex:1,background:"#EF4444",color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:bulkRemoveSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                      {bulkRemoveSubmitting?"Removing...":"Remove"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
+                  {personnelSearch==="unregistered"&&(
+                    <th style={{padding:"11px 14px",width:36}}>
+                      <input type="checkbox"
+                        checked={filteredUsers.length>0&&filteredUsers.every(u=>selectedUnregisteredIds.includes(u.id))}
+                        onChange={e=>{
+                          if(e.target.checked) setSelectedUnregisteredIds(prev=>Array.from(new Set([...prev,...filteredUsers.map(u=>u.id)])));
+                          else setSelectedUnregisteredIds(prev=>prev.filter(id=>!filteredUsers.some(u=>u.id===id)));
+                        }}
+                        style={{width:15,height:15,cursor:"pointer"}} />
+                    </th>
+                  )}
                   {personnelSearch==="unregistered"
-                    ? ["ID No.","Name","Plant","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
-                    : ["ID No.","Name","Plant","Phone","Username","Role","Credit Limit","Balance","Actions"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
+                    ? ["ID No.","Name","Department","Company","Plant","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
+                    : ["ID No.","Name","Department","Company","Plant","Phone","Username","Role","Credit Limit","Balance","Actions"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
                   }
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length===0&&<tr><td colSpan={8} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
+                {filteredUsers.length===0&&<tr><td colSpan={personnelSearch==="unregistered"?8:11} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
                 {personnelSearch==="unregistered" ? filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
+                    <td style={{padding:"12px 14px"}}>
+                      <input type="checkbox" checked={selectedUnregisteredIds.includes(u.id)}
+                        onChange={e=>{
+                          if(e.target.checked) setSelectedUnregisteredIds(prev=>[...prev,u.id]);
+                          else setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));
+                        }}
+                        style={{width:15,height:15,cursor:"pointer"}} />
+                    </td>
                     <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600}}>{u.idNumber||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:"#FEE2E2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#EF4444",flexShrink:0}}>{u.avatar}</div>
-                        <span style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</span>
+                        <div>
+                          <div style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</div>
+                          {u.position&&<div style={{fontSize:11,color:"#9CA3AF"}}>{u.position}</div>}
+                        </div>
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px"}}><span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"—"}</span></td>
+                    <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
+                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
+                    <td style={{padding:"12px 14px"}}>
+                      {editPlantId===u.id ? (
+                        <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                          <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
+                            style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
+                            <option value="">Unassigned</option>
+                            {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
+                          </select>
+                          <button onClick={()=>setEditPlantId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{background:u.plant?PURPLE_LIGHT:"#F3F4F6",color:u.plant?PURPLE:"#9CA3AF",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"Unassigned"}</span>
+                          <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
+                            <Icon name="edit" size={12} color="#9CA3AF" />
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td style={{padding:"12px 14px"}}><span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>Pending Registration</span></td>
                     <td style={{padding:"12px 14px"}}>
-                      <button onClick={()=>setUsers(prev=>prev.filter(uu=>uu.id!==u.id))} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
+                      <button onClick={()=>{setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
                         <Icon name="trash" size={13} color="#991B1B" /> Remove
                       </button>
                     </td>
@@ -2680,16 +3569,39 @@ export default function KFCanteen() {
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>{u.avatar}</div>
-                        <span style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</span>
+                        <div>
+                          <div style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</div>
+                          {u.position&&<div style={{fontSize:11,color:"#9CA3AF"}}>{u.position}</div>}
+                        </div>
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px"}}><span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"—"}</span></td>
+                    <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
+                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
+                    <td style={{padding:"12px 14px"}}>
+                      {editPlantId===u.id ? (
+                        <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                          <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
+                            style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
+                            <option value="">Unassigned</option>
+                            {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
+                          </select>
+                          <button onClick={()=>setEditPlantId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{background:u.plant?PURPLE_LIGHT:"#F3F4F6",color:u.plant?PURPLE:"#9CA3AF",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"Unassigned"}</span>
+                          <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
+                            <Icon name="edit" size={12} color="#9CA3AF" />
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
                     <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
                       {editRoleId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                          <select defaultValue={u.role} onChange={e=>{ setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,role:e.target.value}:uu)); setEditRoleId(null); }}
+                          <select defaultValue={u.role} onChange={e=>{ const newRole=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,role:newRole}:uu)); dbUpdateUser(u.id,{role:newRole}); setEditRoleId(null); }}
                             style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
                             <option value="user">Customer</option>
                             <option value="staff">Staff</option>
@@ -2714,7 +3626,7 @@ export default function KFCanteen() {
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
                             style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
-                          <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:parseFloat(editCreditVal)||uu.creditLimit}:uu));setEditCreditId(null);}}
+                          <button onClick={()=>{const newLimit=parseFloat(editCreditVal)||u.creditLimit;setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:newLimit}:uu));dbUpdateUser(u.id,{creditLimit:newLimit});setEditCreditId(null);}}
                             style={{background:PURPLE,color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>Save</button>
                           <button onClick={()=>setEditCreditId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>✕</button>
                         </div>
@@ -2734,9 +3646,13 @@ export default function KFCanteen() {
                           style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Set Limit
                         </button>
-                        <button onClick={()=>setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu))}
+                        <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu));dbUpdateUser(u.id,{creditBalance:u.creditLimit});}}
                           style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Reset
+                        </button>
+                        <button onClick={()=>{setResetTarget(u);setResetStage("choose");setResetError("");setResetNewPassword("");setResetConfirmPassword("");}}
+                          style={{background:"#FEF3C7",color:"#92400E",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                          Reset Account
                         </button>
                       </div>
                     </td>
@@ -2748,6 +3664,116 @@ export default function KFCanteen() {
           <div style={{marginTop:12,background:"#F0FDF4",borderRadius:10,border:"1px solid #A7F3D0",padding:"10px 14px",fontSize:12,color:"#065F46"}}>
             💡 Credit balances auto-reset to each user's limit on the <strong>15th</strong> and <strong>last day</strong> of every month.
           </div>
+
+          {/* Reset Account modal */}
+          {resetTarget&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Reset Account</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>{resetTarget.name}</div>
+                  </div>
+                  <button disabled={resetSubmitting} onClick={()=>setResetTarget(null)}
+                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:resetSubmitting?"not-allowed":"pointer",color:"#fff",fontSize:18}}>×</button>
+                </div>
+
+                {resetStage==="choose"&&(
+                  <div style={{padding:"22px"}}>
+                    <div style={{fontSize:13,color:"#6B7280",marginBottom:16}}>What do you want to reset?</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                      <button onClick={()=>setResetStage("confirm-details")}
+                        style={{textAlign:"left",background:"#FEF3C7",border:"1.5px solid #FCD34D",borderRadius:10,padding:"14px 16px",cursor:"pointer"}}>
+                        <div style={{fontWeight:700,fontSize:14,color:"#92400E"}}>🔄 Reset Employee Details</div>
+                        <div style={{fontSize:12,color:"#92400E",marginTop:4,lineHeight:1.4}}>Clears login, phone, email, and plant assignment. Returns them to Unregistered so they can register again. Order history and credit balance are kept.</div>
+                      </button>
+                      <button onClick={()=>setResetStage("set-password")}
+                        style={{textAlign:"left",background:PURPLE_LIGHT,border:"1.5px solid "+PURPLE,borderRadius:10,padding:"14px 16px",cursor:"pointer"}}>
+                        <div style={{fontWeight:700,fontSize:14,color:PURPLE}}>🔑 Reset Password Only</div>
+                        <div style={{fontSize:12,color:PURPLE,marginTop:4,lineHeight:1.4}}>Keeps them registered with all their details — just sets a new password.</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {resetStage==="confirm-details"&&(
+                  <div style={{padding:"22px"}}>
+                    <div style={{fontSize:14,color:"#374151",marginBottom:16,lineHeight:1.5}}>
+                      This will clear <strong>{resetTarget.name}</strong>'s username, password, phone, email, and plant assignment, and move them back to <strong>Unregistered</strong>. Their order history and credit balance will <strong>not</strong> be affected.
+                    </div>
+                    {resetError&&(
+                      <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#991B1B"}}>
+                        ⚠️ {resetError}
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:10}}>
+                      <button disabled={resetSubmitting} onClick={()=>setResetStage("choose")}
+                        style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:10,padding:"12px",cursor:resetSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                        Back
+                      </button>
+                      <button disabled={resetSubmitting} onClick={async ()=>{
+                        setResetSubmitting(true);
+                        setResetError("");
+                        const patch = { username:null, password:"", phone:"", email:"", plant:"", registered:false };
+                        const result = await dbUpdateUser(resetTarget.id, patch);
+                        setResetSubmitting(false);
+                        if(!result.success){
+                          setResetError("Could not reset — "+(result.error&&result.error.message?result.error.message:"unknown error")+". Please try again.");
+                          return;
+                        }
+                        setUsers(prev=>prev.map(uu=>uu.id===resetTarget.id?{...uu,...patch}:uu));
+                        setResetTarget(null);
+                      }} style={{flex:1,background:"#EF4444",color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:resetSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                        {resetSubmitting?"Resetting...":"Yes, Reset Details"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {resetStage==="set-password"&&(
+                  <div style={{padding:"22px"}}>
+                    <div style={{marginBottom:12}}>
+                      <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>New Password</label>
+                      <input type="text" value={resetNewPassword} onChange={e=>setResetNewPassword(e.target.value)} placeholder="Enter new password"
+                        style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
+                    </div>
+                    <div style={{marginBottom:16}}>
+                      <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Confirm New Password</label>
+                      <input type="text" value={resetConfirmPassword} onChange={e=>setResetConfirmPassword(e.target.value)} placeholder="Re-enter new password"
+                        style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
+                    </div>
+                    {resetError&&(
+                      <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#991B1B"}}>
+                        ⚠️ {resetError}
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:10}}>
+                      <button disabled={resetSubmitting} onClick={()=>setResetStage("choose")}
+                        style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:10,padding:"12px",cursor:resetSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                        Back
+                      </button>
+                      <button disabled={resetSubmitting} onClick={async ()=>{
+                        if(!resetNewPassword){ setResetError("Please enter a new password."); return; }
+                        if(resetNewPassword!==resetConfirmPassword){ setResetError("Passwords do not match."); return; }
+                        setResetSubmitting(true);
+                        setResetError("");
+                        const result = await dbUpdateUser(resetTarget.id, {password:resetNewPassword});
+                        setResetSubmitting(false);
+                        if(!result.success){
+                          setResetError("Could not save — "+(result.error&&result.error.message?result.error.message:"unknown error")+". Please try again.");
+                          return;
+                        }
+                        setUsers(prev=>prev.map(uu=>uu.id===resetTarget.id?{...uu,password:resetNewPassword}:uu));
+                        setResetTarget(null);
+                      }} style={{flex:1,background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:resetSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                        {resetSubmitting?"Saving...":"Save New Password"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── OUTSIDE CUSTOMERS (separate table) ── */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"28px 0 16px",flexWrap:"wrap",gap:12}}>
@@ -2789,7 +3815,7 @@ export default function KFCanteen() {
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
                             style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
-                          <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:parseFloat(editCreditVal)||uu.creditLimit}:uu));setEditCreditId(null);}}
+                          <button onClick={()=>{const newLimit=parseFloat(editCreditVal)||u.creditLimit;setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:newLimit}:uu));dbUpdateUser(u.id,{creditLimit:newLimit});setEditCreditId(null);}}
                             style={{background:PURPLE,color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>Save</button>
                           <button onClick={()=>setEditCreditId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>✕</button>
                         </div>
@@ -2808,11 +3834,11 @@ export default function KFCanteen() {
                           style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Set Limit
                         </button>
-                        <button onClick={()=>setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu))}
+                        <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu));dbUpdateUser(u.id,{creditBalance:u.creditLimit});}}
                           style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Reset
                         </button>
-                        <button onClick={()=>setUsers(prev=>prev.filter(uu=>uu.id!==u.id))}
+                        <button onClick={()=>{setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);}}
                           style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           <Icon name="trash" size={12} color="#991B1B" /> Remove
                         </button>
@@ -2864,7 +3890,7 @@ export default function KFCanteen() {
 
           {/* ── ORDERS TAB ── */}
           {historyTab==="orders"&&(()=>{
-            const selDateStr = salesDate.toISOString().slice(0,10);
+            const selDateStr = toDateKey(salesDate);
             const allDayOrders = orders.filter(o=>o.date===selDateStr);
             const hs = historySearch.toLowerCase().trim();
             const dayOrders = hs
@@ -2959,7 +3985,7 @@ export default function KFCanteen() {
                           {week.map((cell,ci)=>{
                             if(cell.type!=="curr") return <div key={ci} style={{textAlign:"center",padding:"6px 2px",fontSize:12,color:"#D1D5DB"}}>{cell.day}</div>;
                             const cellDate = new Date(scYear,scMonth,cell.day);
-                            const cellStr = cellDate.toISOString().slice(0,10);
+                            const cellStr = toDateKey(cellDate);
                             const isSel = isSameDay(cellDate,salesDate);
                             const isT = isSameDay(cellDate,TODAY_DATE);
                             const hasOrders = datesWithOrders.has(cellStr);
@@ -3233,6 +4259,7 @@ export default function KFCanteen() {
           <Icon name="check" size={16} color="#fff" /> Order placed successfully!
         </div>
       )}
+      <Footer />
     </div>
   );
 }
