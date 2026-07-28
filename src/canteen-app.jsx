@@ -354,6 +354,25 @@ export default function KFCanteen() {
   };
   const handleLogout = () => { setCurrentUser(null); setLoginForm({username:"",password:""}); setCart([]); setLoginError(""); setCreditNotif(false); setSidebarOpen(false); };
 
+  // Demo-only shortcut: log straight in as a seeded demo account without typing credentials.
+  const handleQuickLogin = (username, password) => {
+    const found = users.find(u=>u.username===username && u.password===password && u.registered);
+    if (!found) { setLoginError("Demo account not found — has the demo data been seeded?"); return; }
+    const today = new Date();
+    const day = today.getDate();
+    const lastDay = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+    let updatedUser = found;
+    if(day===15||day===lastDay) {
+      updatedUser = {...found, creditBalance: found.creditLimit};
+      setUsers(prev=>prev.map(u=>u.id===found.id?updatedUser:u));
+      dbUpdateUser(found.id,{creditBalance:found.creditLimit});
+    }
+    setCurrentUser(updatedUser);
+    setLoginError("");
+    setActiveTab(found.role==="user"?"menu":found.role==="admin"?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
+    if(updatedUser.creditBalance < 100) setCreditNotif(true);
+  };
+
   /* ── DOWNLOAD ORDERS AS XLSX ── */
   const downloadOrdersExcel = (ordersToExport, date, filterType) => {
     try {
@@ -937,6 +956,28 @@ export default function KFCanteen() {
             </div>
             {loginError && <p style={{color:"#EF4444",fontSize:12,margin:"6px 0 0",display:"flex",alignItems:"center",gap:5}}>⚠️ {loginError}</p>}
             <button onClick={handleLogin} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:18}}>Sign In</button>
+
+            <div style={{marginTop:20,paddingTop:16,borderTop:"1px dashed #E5E7EB"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8,textAlign:"center"}}>Quick Login (Demo)</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                {[
+                  {label:"Admin", username:"admin", password:"Koufu@2026++"},
+                  {label:"Staff Admin", username:"staffadmin", password:"Koufu@2026++"},
+                  {label:"Staff-Admin · Ramon", username:"ramon.cruz", password:"Demo1234"},
+                  {label:"Staff · Miguel", username:"miguel.santos", password:"Demo1234"},
+                  {label:"Staff · Grace", username:"grace.villanueva", password:"Demo1234"},
+                  {label:"Customer · Kim", username:"kim.delatorre", password:"Demo1234"},
+                  {label:"Customer · Angel", username:"angel.reyes", password:"Demo1234"},
+                  {label:"Customer · Mark", username:"mark.aquino", password:"Demo1234"},
+                  {label:"Outside Customer", username:"paolo.outside", password:"Demo1234"},
+                ].map(acc=>(
+                  <button key={acc.username} onClick={()=>handleQuickLogin(acc.username, acc.password)}
+                    style={{padding:"8px 6px",borderRadius:8,border:"1px solid #E5E7EB",background:"#F9FAFB",color:"#374151",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"center"}}>
+                    {acc.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <p style={{textAlign:"center",marginTop:16,fontSize:13,color:"#9CA3AF"}}>
               Don't have an account? <span onClick={()=>{
                 setShowEmployeeCheck(true);
