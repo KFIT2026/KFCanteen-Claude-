@@ -227,16 +227,7 @@ export default function KFCanteen() {
   // manage menu add form
   const [showAddItem, setShowAddItem] = useState(null);
   const [newItem, setNewItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", days:[], weeks:[], dishId:null });
-
-  const [dragOver, setDragOver] = useState(false);
-  const photoInputRef = useRef(null);
-
-  const handlePhotoFile = useCallback((file) => {
-    if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewItem(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
-  }, []);
+  const [dishOriginContext, setDishOriginContext] = useState(null); // remembers which Add Menu Item slot to return to after creating a dish from within it
 
   // other products category
   const [orderSearch, setOrderSearch] = useState("");
@@ -663,7 +654,7 @@ export default function KFCanteen() {
 
   /* ── MENU MGMT ── */
   const addMenuItem = () => {
-    if(!newItem.name||!newItem.price) return;
+    if(!newItem.dishId||!newItem.name||!newItem.price) return;
     const days = newItem.days&&newItem.days.length ? newItem.days : [mgDay];
     const weeks = newItem.weeks&&newItem.weeks.length ? newItem.weeks : [mgWeekKey];
     setMenu(prev=>{
@@ -769,10 +760,25 @@ export default function KFCanteen() {
       const dish = { id:"dish"+Date.now(), ...dishData, ingredients };
       setDishes(prev=>[...prev, dish]);
       dbInsertDish(dish);
+      if(dishOriginContext){
+        // came from Add Menu Item's "Create New Dish" shortcut — link it and go back
+        setNewItem(p=>({...p,dishId:dish.id,name:dish.name,price:String(dish.price),cat:dish.cat||"LUNCH",img:dish.img,photo:dish.isPhoto?dish.img:null,grams:dish.grams?String(dish.grams):""}));
+        setShowAddItem(dishOriginContext);
+        setDishOriginContext(null);
+      }
     }
     setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
     setEditDishId(null);
     setShowAddDish(false);
+  };
+  const closeAddDish = () => {
+    setShowAddDish(false);
+    setEditDishId(null);
+    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
+    if(dishOriginContext){
+      setShowAddItem(dishOriginContext);
+      setDishOriginContext(null);
+    }
   };
   const removeDish = (id) => { setDishes(prev=>prev.filter(d=>d.id!==id)); dbDeleteDish(id); };
 
@@ -1714,7 +1720,7 @@ export default function KFCanteen() {
                 <div>
                   <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Menu Item</div>
                   <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>
-                    {(newItem.days&&newItem.days.length?newItem.days.join(", "):mgDay)} · Week {(newItem.weeks&&newItem.weeks.length?newItem.weeks:[mgWeekKey]).map(wk=>wk.split("-")[1]).join(", ")} · {newItem.cat}
+                    {(newItem.days&&newItem.days.length?newItem.days.join(", "):mgDay)} · Week {(newItem.weeks&&newItem.weeks.length?newItem.weeks:[mgWeekKey]).map(wk=>wk.split("-")[1]).join(", ")}{newItem.dishId?" · "+newItem.cat:""}
                   </div>
                 </div>
                 <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});setDishLinkSearch("");}}
@@ -1763,7 +1769,7 @@ export default function KFCanteen() {
                   <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Item will be added to the selected week(s) × day(s) combination.</div>
                 </div>
                 <div style={{marginBottom:18,position:"relative"}}>
-                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Link to Dish <span style={{fontWeight:400,color:"#9CA3AF"}}>(optional — enables raw material tracking)</span></label>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Link to Dish</label>
                   {newItem.dishId ? (()=>{ const linked = dishes.find(d=>d.id===newItem.dishId); return linked && (
                     <div style={{display:"flex",alignItems:"center",gap:10,background:PURPLE_LIGHT,borderRadius:10,padding:"10px 14px"}}>
                       <div style={{width:36,height:36,borderRadius:8,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",fontSize:20}}>
@@ -1783,8 +1789,9 @@ export default function KFCanteen() {
                         <input value={dishLinkSearch} onChange={e=>setDishLinkSearch(e.target.value)} placeholder="Search dish catalog..."
                           style={{border:"none",outline:"none",fontSize:13,color:"#111",width:"100%",background:"none"}} />
                       </div>
+                      <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Every menu item must come from the dish catalog, so its raw materials are tracked automatically.</div>
                       {dishLinkSearch.trim().length>=1&&(
-                        <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:250,overflow:"hidden",marginTop:2,maxHeight:180,overflowY:"auto"}}>
+                        <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:250,overflow:"hidden",marginTop:2,maxHeight:220,overflowY:"auto"}}>
                           {dishes.filter(d=>d.name.toLowerCase().includes(dishLinkSearch.toLowerCase())).map(d=>(
                             <button key={d.id} onMouseDown={()=>{
                               setNewItem(p=>({...p,dishId:d.id,name:d.name,price:String(d.price),cat:d.cat||"LUNCH",img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):""}));
@@ -1796,65 +1803,24 @@ export default function KFCanteen() {
                             </button>
                           ))}
                           {dishes.filter(d=>d.name.toLowerCase().includes(dishLinkSearch.toLowerCase())).length===0&&(
-                            <div style={{padding:"10px 12px",fontSize:12,color:"#9CA3AF"}}>No dishes found. Create one in Manage Dishes, or fill in a custom item below.</div>
+                            <div style={{padding:"12px"}}>
+                              <div style={{fontSize:12,color:"#9CA3AF",marginBottom:8}}>No dishes found.</div>
+                              <button onMouseDown={()=>{
+                                setDishOriginContext(showAddItem);
+                                setShowAddItem(null);
+                                setNewDish(p=>({...p,name:toProperCase(dishLinkSearch),cat:newItem.cat||"LUNCH"}));
+                                setShowAddDish(true);
+                                setDishLinkSearch("");
+                              }} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:8,padding:"9px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                <Icon name="plus" size={13} color={PURPLE} /> Create New Dish
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
                     </>
                   )}
                 </div>
-                {!newItem.dishId&&(<>
-                <div style={{marginBottom:18}}>
-                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Item Photo</label>
-                  <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
-                    onDrop={e=>{e.preventDefault();setDragOver(false);handlePhotoFile(e.dataTransfer.files[0]);}}
-                    onClick={()=>photoInputRef.current?.click()}
-                    style={{border:`2px dashed ${dragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.5rem",textAlign:"center",cursor:"pointer",background:dragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",position:"relative",minHeight:160,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-                    {newItem.photo ? (
-                      <><img src={newItem.photo} alt="preview" style={{maxHeight:130,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
-                        <button onClick={e=>{e.stopPropagation();setNewItem(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                      </>
-                    ) : (
-                      <><div style={{width:48,height:48,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}><Icon name="products" size={22} color={PURPLE} /></div>
-                        <div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
-                        <div style={{fontSize:12,color:"#9CA3AF"}}>JPG, PNG, WEBP supported</div>
-                        <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
-                          <input value={newItem.img} onChange={e=>setNewItem(p=>({...p,img:e.target.value}))} onClick={e=>e.stopPropagation()} style={{width:56,fontSize:20,borderRadius:8,border:"1px solid #E5E7EB",padding:"4px 6px",textAlign:"center",background:"#fff"}} />
-                        </div>
-                      </>
-                    )}
-                    <input ref={photoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handlePhotoFile(e.target.files[0])} />
-                  </div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-                  <div style={{gridColumn:"1/-1"}}>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Item Name</label>
-                    <input value={newItem.name} onChange={e=>setNewItem(p=>({...p,name:e.target.value}))} placeholder="e.g. Adobo with Rice"
-                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
-                    <select value={newItem.cat} onChange={e=>setNewItem(p=>({...p,cat:e.target.value}))} style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                      {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Price (₱)</label>
-                    <input value={newItem.price} onChange={e=>setNewItem(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
-                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                  </div>
-                  <div style={{gridColumn:"1/-1"}}>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Grams per Serving <span style={{fontWeight:400,color:"#9CA3AF"}}>(optional)</span></label>
-                    <div style={{position:"relative"}}>
-                      <input value={newItem.grams} onChange={e=>setNewItem(p=>({...p,grams:e.target.value}))} placeholder="e.g. 250" type="number" min="0"
-                        style={{width:"100%",fontSize:14,padding:"10px 40px 10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                      <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9CA3AF",fontWeight:600}}>g</span>
-                    </div>
-                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>This will be shown to customers on the menu card</div>
-                  </div>
-                </div>
-                </>)}
                 <div style={{display:"flex",gap:10,marginTop:4}}>
                   <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});setDishLinkSearch("");}}
                     style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
@@ -1862,7 +1828,7 @@ export default function KFCanteen() {
                     const dayCount = newItem.days&&newItem.days.length?newItem.days.length:1;
                     const weekCount = newItem.weeks&&newItem.weeks.length?newItem.weeks.length:1;
                     const total = dayCount*weekCount;
-                    const canSubmit = newItem.name&&newItem.price;
+                    const canSubmit = !!newItem.dishId&&newItem.name&&newItem.price;
                     return (
                       <button onClick={addMenuItem} disabled={!canSubmit}
                         style={{flex:2,background:canSubmit?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:canSubmit?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
@@ -2512,7 +2478,7 @@ export default function KFCanteen() {
             </button>
           </div>
           <div style={{fontSize:12,color:"#6B7280",background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
-            💡 Dishes are reusable recipes. Link one to a weekly menu slot in <strong>Manage Menu → Add Item → Link to Dish</strong> to auto-deduct raw materials when customers order it.
+            💡 Dishes are reusable recipes. Every weekly menu item is linked to a dish (via <strong>Manage Menu → Add Item</strong>) so raw materials get deducted automatically when customers order it.
           </div>
 
           <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220,maxWidth:320,marginBottom:16}}>
@@ -2564,117 +2530,6 @@ export default function KFCanteen() {
             })}
           </div>
           {displayedDishes.length===0&&<Empty msg="No dishes yet" sub="Create a dish and give it a recipe to start tracking raw materials." />}
-
-          {/* Add/Edit Dish modal */}
-          {showAddDish&&(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:540,maxHeight:"90vh",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{editDishId?"Edit Dish":"Add Dish"}</div>
-                  <button onClick={()=>{setShowAddDish(false);setEditDishId(null);}}
-                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                </div>
-                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto"}}>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Dish Photo</label>
-                    <div onDragOver={e=>{e.preventDefault();setDishDragOver(true);}} onDragLeave={()=>setDishDragOver(false)}
-                      onDrop={e=>{e.preventDefault();setDishDragOver(false);handleDishPhotoFile(e.dataTransfer.files[0]);}}
-                      onClick={()=>dishPhotoInputRef.current?.click()}
-                      style={{border:`2px dashed ${dishDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:dishDragOver?PURPLE_LIGHT:"#FAFAFA",position:"relative",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                      {newDish.photo ? (
-                        <><img src={newDish.photo} alt="preview" style={{maxHeight:96,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
-                          <button onClick={e=>{e.stopPropagation();setNewDish(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                        </>
-                      ) : (
-                        <><div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
-                            <input value={newDish.img} onChange={e=>setNewDish(p=>({...p,img:e.target.value}))} onClick={e=>e.stopPropagation()} style={{width:48,fontSize:18,borderRadius:8,border:"1px solid #E5E7EB",padding:"3px 5px",textAlign:"center",background:"#fff"}} />
-                          </div>
-                        </>
-                      )}
-                      <input ref={dishPhotoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleDishPhotoFile(e.target.files[0])} />
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                    <div style={{gridColumn:"1/-1"}}>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Dish Name</label>
-                      <input value={newDish.name} onChange={e=>setNewDish(p=>({...p,name:e.target.value}))} placeholder="e.g. Adobo with Rice"
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                    </div>
-                    <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
-                      <select value={newDish.cat} onChange={e=>setNewDish(p=>({...p,cat:e.target.value}))} style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                        {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Price (₱)</label>
-                      <input value={newDish.price} onChange={e=>setNewDish(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151"}}>Recipe (Raw Materials)</label>
-                      <button type="button" onClick={()=>setNewDish(p=>({...p,ingredients:[...p.ingredients,{id:"ing"+Date.now()+Math.random(),rawMaterialId:"",quantity:""}]}))}
-                        style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>
-                        + Add Ingredient
-                      </button>
-                    </div>
-                    {newDish.ingredients.length===0&&<div style={{fontSize:12,color:"#9CA3AF",fontStyle:"italic"}}>No ingredients yet — this dish won't deduct raw materials on order.</div>}
-                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                      {newDish.ingredients.map((ing,idx)=>{
-                        const mat = rawMaterials.find(m=>m.id===ing.rawMaterialId);
-                        return (
-                          <div key={ing.id} style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <select value={ing.rawMaterialId} onChange={e=>{
-                              const v=e.target.value;
-                              setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,rawMaterialId:v}:i)}));
-                            }} style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                              <option value="">Select raw material...</option>
-                              {rawMaterials.map(m=><option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
-                            </select>
-                            <input value={ing.quantity} onChange={e=>{
-                              const v=e.target.value;
-                              setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,quantity:v}:i)}));
-                            }} type="number" min="0" step="0.01" placeholder="Qty"
-                              style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}} />
-                            <span style={{fontSize:12,color:"#9CA3AF",minWidth:24}}>{mat?mat.unit:""}</span>
-                            <button onClick={()=>setNewDish(p=>({...p,ingredients:p.ingredients.filter((_,ii)=>ii!==idx)}))}
-                              style={{background:"#FEE2E2",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:"#991B1B",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {newDish.ingredients.some(i=>i.rawMaterialId&&i.quantity)&&(()=>{
-                      const cost = newDish.ingredients.reduce((s,i)=>{
-                        const m = rawMaterials.find(rm=>rm.id===i.rawMaterialId);
-                        return s + (m&&i.quantity?m.buyPrice*parseFloat(i.quantity):0);
-                      },0);
-                      const profit = (parseFloat(newDish.price)||0) - cost;
-                      return (
-                        <div style={{marginTop:10,background:PURPLE_LIGHT,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",fontSize:12}}>
-                          <span style={{color:"#EF4444"}}>Cost per serving: ₱{cost.toFixed(2)}</span>
-                          <span style={{color:profit>=0?"#059669":"#EF4444",fontWeight:700}}>Profit: ₱{profit.toFixed(2)}</span>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div style={{display:"flex",gap:10,marginTop:4}}>
-                    <button onClick={()=>{setShowAddDish(false);setEditDishId(null);}}
-                      style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                    <button onClick={saveDish} disabled={!newDish.name||!newDish.price}
-                      style={{flex:2,background:newDish.name&&newDish.price?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newDish.name&&newDish.price?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                      <Icon name="plus" size={15} color="#fff" /> {editDishId?"Save Changes":"Add Dish"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
@@ -4213,6 +4068,117 @@ export default function KFCanteen() {
       <div style={{padding:"1.25rem",maxWidth:1100,margin:"0 auto",transition:"margin-left 0.25s"}}>
         {renderTab()}
       </div>
+      {/* Add/Edit Dish modal — lives at the top level (not inside the Manage Dishes tab) so it can also
+          be opened from Manage Menu's "Create New Dish" shortcut regardless of the active tab */}
+      {showAddDish&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:540,maxHeight:"90vh",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+              <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{editDishId?"Edit Dish":"Add Dish"}</div>
+              <button onClick={closeAddDish}
+                style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+            </div>
+            <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto"}}>
+              <div>
+                <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Dish Photo</label>
+                <div onDragOver={e=>{e.preventDefault();setDishDragOver(true);}} onDragLeave={()=>setDishDragOver(false)}
+                  onDrop={e=>{e.preventDefault();setDishDragOver(false);handleDishPhotoFile(e.dataTransfer.files[0]);}}
+                  onClick={()=>dishPhotoInputRef.current?.click()}
+                  style={{border:`2px dashed ${dishDragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:dishDragOver?PURPLE_LIGHT:"#FAFAFA",position:"relative",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
+                  {newDish.photo ? (
+                    <><img src={newDish.photo} alt="preview" style={{maxHeight:96,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
+                      <button onClick={e=>{e.stopPropagation();setNewDish(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </>
+                  ) : (
+                    <><div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
+                        <input value={newDish.img} onChange={e=>setNewDish(p=>({...p,img:e.target.value}))} onClick={e=>e.stopPropagation()} style={{width:48,fontSize:18,borderRadius:8,border:"1px solid #E5E7EB",padding:"3px 5px",textAlign:"center",background:"#fff"}} />
+                      </div>
+                    </>
+                  )}
+                  <input ref={dishPhotoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleDishPhotoFile(e.target.files[0])} />
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <div style={{gridColumn:"1/-1"}}>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Dish Name</label>
+                  <input value={newDish.name} onChange={e=>setNewDish(p=>({...p,name:e.target.value}))} placeholder="e.g. Adobo with Rice"
+                    style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                </div>
+                <div>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
+                  <select value={newDish.cat} onChange={e=>setNewDish(p=>({...p,cat:e.target.value}))} style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+                    {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Price (₱)</label>
+                  <input value={newDish.price} onChange={e=>setNewDish(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
+                    style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                </div>
+              </div>
+
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151"}}>Recipe (Raw Materials)</label>
+                  <button type="button" onClick={()=>setNewDish(p=>({...p,ingredients:[...p.ingredients,{id:"ing"+Date.now()+Math.random(),rawMaterialId:"",quantity:""}]}))}
+                    style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                    + Add Ingredient
+                  </button>
+                </div>
+                {newDish.ingredients.length===0&&<div style={{fontSize:12,color:"#9CA3AF",fontStyle:"italic"}}>No ingredients yet — this dish won't deduct raw materials on order.</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {newDish.ingredients.map((ing,idx)=>{
+                    const mat = rawMaterials.find(m=>m.id===ing.rawMaterialId);
+                    return (
+                      <div key={ing.id} style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <select value={ing.rawMaterialId} onChange={e=>{
+                          const v=e.target.value;
+                          setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,rawMaterialId:v}:i)}));
+                        }} style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+                          <option value="">Select raw material...</option>
+                          {rawMaterials.map(m=><option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+                        </select>
+                        <input value={ing.quantity} onChange={e=>{
+                          const v=e.target.value;
+                          setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,quantity:v}:i)}));
+                        }} type="number" min="0" step="0.01" placeholder="Qty"
+                          style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}} />
+                        <span style={{fontSize:12,color:"#9CA3AF",minWidth:24}}>{mat?mat.unit:""}</span>
+                        <button onClick={()=>setNewDish(p=>({...p,ingredients:p.ingredients.filter((_,ii)=>ii!==idx)}))}
+                          style={{background:"#FEE2E2",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:"#991B1B",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {newDish.ingredients.some(i=>i.rawMaterialId&&i.quantity)&&(()=>{
+                  const cost = newDish.ingredients.reduce((s,i)=>{
+                    const m = rawMaterials.find(rm=>rm.id===i.rawMaterialId);
+                    return s + (m&&i.quantity?m.buyPrice*parseFloat(i.quantity):0);
+                  },0);
+                  const profit = (parseFloat(newDish.price)||0) - cost;
+                  return (
+                    <div style={{marginTop:10,background:PURPLE_LIGHT,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",fontSize:12}}>
+                      <span style={{color:"#EF4444"}}>Cost per serving: ₱{cost.toFixed(2)}</span>
+                      <span style={{color:profit>=0?"#059669":"#EF4444",fontWeight:700}}>Profit: ₱{profit.toFixed(2)}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div style={{display:"flex",gap:10,marginTop:4}}>
+                <button onClick={closeAddDish}
+                  style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                <button onClick={saveDish} disabled={!newDish.name||!newDish.price}
+                  style={{flex:2,background:newDish.name&&newDish.price?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newDish.name&&newDish.price?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  <Icon name="plus" size={15} color="#fff" /> {editDishId?"Save Changes":"Add Dish"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showPlantModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
           <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:400,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
