@@ -446,11 +446,15 @@ const excessDecisionToDb = (d) => ({
   id: d.id, plant: d.plant, date: d.date, menu_item_id: d.menuItemId||null,
   dish_name: d.dishName, excess_qty: d.excessQty, serving_unit: d.servingUnit||"g",
   decision: d.decision, decided_by: d.decidedBy,
+  repurpose_target_type: d.repurposeTargetType||null,
+  repurpose_target_id: d.repurposeTargetId||null,
+  repurpose_target_name: d.repurposeTargetName||null,
 });
 const excessDecisionFromDb = (r) => ({
   id: r.id, plant: r.plant, date: r.date, menuItemId: r.menu_item_id,
   dishName: r.dish_name, excessQty: Number(r.excess_qty), servingUnit: r.serving_unit||"g", decision: r.decision,
   decidedBy: r.decided_by, decidedAt: r.decided_at,
+  repurposeTargetType: r.repurpose_target_type, repurposeTargetId: r.repurpose_target_id, repurposeTargetName: r.repurpose_target_name,
 });
 
 export const fetchExcessDecisions = async () => {

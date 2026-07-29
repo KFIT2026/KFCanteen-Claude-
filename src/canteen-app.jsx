@@ -9,7 +9,6 @@ import {
   fetchRawMaterials, dbInsertRawMaterial, dbUpdateRawMaterial, dbDeleteRawMaterial,
   fetchDishes, dbInsertDish, dbUpdateDish, dbDeleteDish,
   fetchRawMaterialLog, dbInsertRawMaterialLog,
-  fetchDailyPrep, dbUpsertDailyPrep,
   fetchPlantCloses, dbInsertPlantClose, dbReopenPlantClose,
   fetchExcessDecisions, dbInsertExcessDecision,
 } from "./db";
@@ -262,7 +261,6 @@ export default function KFCanteen() {
   useEffect(() => { fetchProducts().then(setOtherProducts); }, []);
   const [mgDay, setMgDay] = useState(TODAY);
   const [mgDate, setMgDate] = useState(new Date(TODAY_DATE));
-  const [mgPlant, setMgPlant] = useState("");
   const mgWeekKey = getWeekKey(mgDate);
   const mgWeekNumber = getWeekNumber(mgDate);
   const [showMgCal, setShowMgCal] = useState(false);
@@ -337,15 +335,17 @@ export default function KFCanteen() {
   const [dishLinkSearch, setDishLinkSearch] = useState("");
 
   // close canteen / excess repurpose-or-waste
-  const [dailyPrep, setDailyPrep] = useState([]);
-  useEffect(() => { fetchDailyPrep().then(setDailyPrep); }, []);
   const [plantCloses, setPlantCloses] = useState([]);
   useEffect(() => { fetchPlantCloses().then(setPlantCloses); }, []);
   const [excessDecisions, setExcessDecisions] = useState([]);
   useEffect(() => { fetchExcessDecisions().then(setExcessDecisions); }, []);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closePlant, setClosePlant] = useState("");
-  const [rawMaterialsTab, setRawMaterialsTab] = useState("stock"); // "stock" | "waste"
+  const [excessInputs, setExcessInputs] = useState({}); // menuItemId -> typed leftover qty (string)
+  const [repurposeChoiceFor, setRepurposeChoiceFor] = useState(null); // menuItemId currently choosing a repurpose target
+  const [repurposeDishSearch, setRepurposeDishSearch] = useState("");
+  const [repurposeTargetDish, setRepurposeTargetDish] = useState(null);
+  const [rawMaterialsTab, setRawMaterialsTab] = useState("stock"); // "stock" | "waste" | "repurposed"
 
   // receipts
   const [receipts, setReceipts] = useState([]);
@@ -878,45 +878,47 @@ export default function KFCanteen() {
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
 
   // "qty" below means "amount in the dish's own serving_unit" — literal grams
-  // for weight-tracked dishes, a plain piece/cup count otherwise. isWeight
-  // tells the caller whether to convert a kg-typed UI input to grams.
-  const savePreparedQty = (menuItemId, plant, amount, isWeight) => {
-    const qty = Math.max(0, amount||0) * (isWeight?1000:1);
-    const entry = { id:`${plant}_${TODAY_KEY}_${menuItemId}`, plant, date:TODAY_KEY, menuItemId, preparedQty:qty, updatedBy:currentUser.name };
-    setDailyPrep(prev=>{
-      const exists = prev.some(p=>p.plant===plant&&p.date===TODAY_KEY&&p.menuItemId===menuItemId);
-      return exists ? prev.map(p=>(p.plant===plant&&p.date===TODAY_KEY&&p.menuItemId===menuItemId)?entry:p) : [...prev, entry];
-    });
-    dbUpsertDailyPrep(entry);
-  };
-
+  // for weight-tracked dishes, a plain piece/cup count otherwise.
   const getSoldQty = (plant, date, item) => orders
     .filter(o=>o.plant===plant&&o.date===date)
     .flatMap(o=>o.items)
     .filter(it=>it.name===item.name&&it.grams)
     .reduce((s,it)=>s+it.grams*it.qty,0);
 
-  const getPlantExcessList = (plant, date=TODAY_KEY) => {
+  // lists today's active dishes for a plant so staff can log leftovers by eye
+  // at closing time — no prepared-quantity tracking needed during the day.
+  const getPlantDishList = (plant, date=TODAY_KEY) => {
     const dateObj = new Date(date+"T00:00:00");
     const day = getDateKey(dateObj);
     const weekKey = getWeekKey(dateObj);
     const todaysItems = (menu[weekKey]&&menu[weekKey][day])||[];
     return todaysItems.map(item=>{
-      const prep = dailyPrep.find(p=>p.plant===plant&&p.date===date&&p.menuItemId===item.id);
-      if(!prep||prep.preparedQty<=0) return null;
       const soldQty = getSoldQty(plant, date, item);
-      const excessQty = Math.max(0, prep.preparedQty - soldQty);
       const decided = excessDecisions.find(d=>d.plant===plant&&d.date===date&&d.menuItemId===item.id);
-      return { item, preparedQty:prep.preparedQty, soldQty, excessQty, decided };
-    }).filter(Boolean);
+      return { item, soldQty, decided };
+    });
   };
 
-  const decideExcess = (plant, date, item, excessQty, decision) => {
-    const decisionEntry = { id:"exd"+Date.now()+item.id, plant, date, menuItemId:item.id, dishName:item.name, excessQty, servingUnit:item.servingUnit||"g", decision, decidedBy:currentUser.name, decidedAt:new Date().toISOString() };
+  // repurposeTarget is null for waste, or one of:
+  //   { type:"raw_materials" } — breaks the excess down into its recipe's
+  //     ingredients proportionally and adds them to each material's
+  //     excess_stock (same mechanism as before)
+  //   { type:"dish", dishId, dishName } — logged only, no inventory
+  //     recalculation: there's no "prepared stock" concept for dishes to
+  //     add to, so this just records that the excess was turned into
+  //     another dish for accountability/waste-reduction tracking
+  const decideExcess = (plant, date, item, excessQty, decision, repurposeTarget) => {
+    const decisionEntry = {
+      id:"exd"+Date.now()+item.id+Math.random().toString(36).slice(2), plant, date, menuItemId:item.id, dishName:item.name,
+      excessQty, servingUnit:item.servingUnit||"g", decision, decidedBy:currentUser.name, decidedAt:new Date().toISOString(),
+      repurposeTargetType: decision==="repurpose" ? repurposeTarget.type : null,
+      repurposeTargetId: decision==="repurpose" && repurposeTarget.type==="dish" ? repurposeTarget.dishId : null,
+      repurposeTargetName: decision==="repurpose" && repurposeTarget.type==="dish" ? repurposeTarget.dishName : null,
+    };
     setExcessDecisions(prev=>[decisionEntry, ...prev]);
     dbInsertExcessDecision(decisionEntry);
 
-    if(decision==="repurpose" && item.dishId){
+    if(decision==="repurpose" && repurposeTarget.type==="raw_materials" && item.dishId){
       const dish = dishes.find(d=>d.id===item.dishId);
       if(dish&&dish.ingredients&&dish.ingredients.length&&dish.grams){
         dish.ingredients.forEach(ing=>{
@@ -1834,8 +1836,6 @@ export default function KFCanteen() {
 
     /* ── MANAGE MENU (staff/admin) ── */
     if(activeTab==="mgmenu") {
-      const mgActivePlant = (role==="staff"||role==="staff-admin") ? currentUser.plant : (mgPlant||currentUser.plant||"KF-Main");
-      const mgIsToday = isSameDay(mgDate,TODAY_DATE);
       return (
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
@@ -1846,17 +1846,6 @@ export default function KFCanteen() {
             <Icon name="plus" size={14} color="#fff" /> Add Item
           </button>
         </div>
-        {role==="admin"&&mgIsToday&&(
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-            <span style={{fontSize:12,color:"#6B7280",fontWeight:600}}>Prepped-weight tracking for:</span>
-            {PLANTS.map(p=>(
-              <button key={p} onClick={()=>setMgPlant(p)}
-                style={{padding:"5px 14px",borderRadius:20,border:"1px solid #E5E7EB",background:mgActivePlant===p?PURPLE:"#fff",color:mgActivePlant===p?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                {p}
-              </button>
-            ))}
-          </div>
-        )}
         {/* date picker */}
         <div style={{position:"relative",marginBottom:16,display:"inline-block"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -2061,21 +2050,6 @@ export default function KFCanteen() {
                 <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
                 <div style={{fontSize:12,color:"#6B7280"}}>{item.cat} · ₱{item.price}{item.grams?` · ${unitIcon(item.servingUnit)} ${formatServing(item.grams,item.servingUnit)}/serving`:""}</div>
               </div>
-              {mgIsToday&&item.grams&&(()=>{
-                const unit = item.servingUnit||"g";
-                const isWeight = unit==="g";
-                const prep = dailyPrep.find(d=>d.plant===mgActivePlant&&d.date===TODAY_KEY&&d.menuItemId===item.id);
-                return (
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <label style={{fontSize:11,color:"#6B7280",fontWeight:600,whiteSpace:"nowrap"}}>Prepared ({isWeight?"kg":unitSuffix(unit,2)})</label>
-                    <input type="number" min="0" step={isWeight?"0.1":"1"} placeholder="0"
-                      key={`prep-${item.id}-${mgActivePlant}`}
-                      defaultValue={prep?(isWeight?prep.preparedQty/1000:prep.preparedQty):""}
-                      onBlur={e=>savePreparedQty(item.id, mgActivePlant, parseFloat(e.target.value)||0, isWeight)}
-                      style={{width:64,fontSize:12,padding:"5px 7px",borderRadius:7,border:"1px solid #E5E7EB",textAlign:"center"}} />
-                  </div>
-                );
-              })()}
               <span style={{fontSize:11,background:item.available?"#D1FAE5":"#FEE2E2",color:item.available?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600}}>
                 {item.available?"Available":"Unavailable"}
               </span>
@@ -2114,9 +2088,9 @@ export default function KFCanteen() {
               if(it.grams) return; // dish, not an "other product"
               productOuts[it.name] = (productOuts[it.name]||0)+it.qty;
             }));
-            const excessList = getPlantExcessList(p);
-            const pending = excessList.filter(e=>e.excessQty>0&&!e.decided);
-            const canClose = pending.length===0;
+            const dishList = getPlantDishList(p);
+            const withInput = dishList.filter(({item,decided})=>!decided&&(parseFloat(excessInputs[item.id])||0)>0);
+            const undecidedTyped = withInput.length;
             return (
               <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
                 <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
@@ -2173,46 +2147,117 @@ export default function KFCanteen() {
                           </div>
                         )}
 
-                        <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Excess Dishes</div>
-                        {excessList.length===0 ? (
-                          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No prepared quantity logged for today's dishes — nothing to reconcile.</div>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                          <div style={{fontWeight:700,fontSize:14,color:"#111"}}>Excess Dishes</div>
+                          <div style={{fontSize:11,color:"#9CA3AF"}}>Count today's leftovers by eye and log them below</div>
+                        </div>
+                        {dishList.length===0 ? (
+                          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No dishes on today's menu.</div>
                         ) : (
+                          <>
+                          {undecidedTyped>1&&(
+                            <div style={{display:"flex",gap:8,marginBottom:10}}>
+                              <button onClick={()=>withInput.forEach(({item})=>decideExcess(p,TODAY_KEY,item,parseFloat(excessInputs[item.id]),"waste"))}
+                                style={{flex:1,background:"#FEE2E2",color:"#991B1B",border:"none",borderRadius:7,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                🗑️ Waste All ({undecidedTyped})
+                              </button>
+                              <button onClick={()=>withInput.forEach(({item})=>{ if(item.dishId) decideExcess(p,TODAY_KEY,item,parseFloat(excessInputs[item.id]),"repurpose",{type:"raw_materials"}); })}
+                                title="Only applies to dishes with a linked recipe — others are skipped"
+                                style={{flex:1,background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:7,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                🔁 Repurpose All to Raw Materials
+                              </button>
+                            </div>
+                          )}
                           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
-                            {excessList.map(({item,preparedQty,soldQty,excessQty,decided})=>(
+                            {dishList.map(({item,soldQty,decided})=>{
+                              const unit = item.servingUnit||"g";
+                              const typedQty = parseFloat(excessInputs[item.id])||0;
+                              return (
                               <div key={item.id} style={{background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px 14px"}}>
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:excessQty>0?8:0}}>
-                                  <div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                                  <div style={{flex:1,minWidth:0}}>
                                     <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{item.name}</div>
-                                    <div style={{fontSize:11,color:"#6B7280"}}>Prepared {formatQtyLong(preparedQty,item.servingUnit)} · Sold {formatQtyLong(soldQty,item.servingUnit)}</div>
+                                    <div style={{fontSize:11,color:"#6B7280"}}>Sold today: {formatQtyLong(soldQty,unit)}</div>
                                   </div>
-                                  <div style={{fontSize:13,fontWeight:800,color:excessQty>0?"#F59E0B":"#059669"}}>
-                                    {excessQty>0?`${formatQtyLong(excessQty,item.servingUnit)} excess`:"No excess"}
-                                  </div>
+                                  {decided ? (
+                                    <div style={{fontSize:12,fontWeight:600,color:decided.decision==="repurpose"?"#059669":"#991B1B",textAlign:"right"}}>
+                                      {decided.decision==="repurpose"
+                                        ? `🔁 ${formatQtyLong(decided.excessQty,unit)} → ${decided.repurposeTargetType==="dish"?decided.repurposeTargetName:"Raw Materials"}`
+                                        : `🗑️ ${formatQtyLong(decided.excessQty,unit)} wasted`}
+                                    </div>
+                                  ) : (
+                                    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                                      <label style={{fontSize:11,color:"#6B7280",fontWeight:600,whiteSpace:"nowrap"}}>Excess ({unitSuffix(unit,2)})</label>
+                                      <input type="number" min="0" step={unit==="g"?"1":"0.5"} placeholder="0"
+                                        value={excessInputs[item.id]||""}
+                                        onChange={e=>setExcessInputs(prev=>({...prev,[item.id]:e.target.value}))}
+                                        style={{width:60,fontSize:12,padding:"5px 7px",borderRadius:7,border:"1px solid #E5E7EB",textAlign:"center"}} />
+                                    </div>
+                                  )}
                                 </div>
-                                {excessQty>0&&(decided ? (
-                                  <div style={{fontSize:12,fontWeight:600,color:decided.decision==="repurpose"?"#059669":"#991B1B"}}>
-                                    {decided.decision==="repurpose"?"🔁 Repurposed into raw materials":"🗑️ Marked as waste"}
-                                  </div>
-                                ) : (
-                                  <div style={{display:"flex",gap:8}}>
-                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessQty,"repurpose")} disabled={!item.dishId}
-                                      title={item.dishId?"":"No recipe linked — can't compute ingredient breakdown"}
-                                      style={{flex:1,background:item.dishId?"#D1FAE5":"#F3F4F6",color:item.dishId?"#065F46":"#9CA3AF",border:"none",borderRadius:7,padding:"7px",cursor:item.dishId?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
-                                      🔁 Repurpose
-                                    </button>
-                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessQty,"waste")}
-                                      style={{flex:1,background:"#FEE2E2",color:"#991B1B",border:"none",borderRadius:7,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:700}}>
-                                      🗑️ Waste
-                                    </button>
-                                  </div>
-                                ))}
+                                {!decided&&typedQty>0&&(
+                                  repurposeChoiceFor===item.id ? (
+                                    <div style={{marginTop:8,background:"#fff",border:"1px solid #E5E7EB",borderRadius:8,padding:8}}>
+                                      <div style={{fontSize:11,fontWeight:600,color:"#374151",marginBottom:6}}>Repurpose {formatQtyLong(typedQty,unit)} of {item.name} to:</div>
+                                      <div style={{display:"flex",gap:6,marginBottom:repurposeTargetDish!==null||!item.dishId?0:6}}>
+                                        <button onClick={()=>decideExcess(p,TODAY_KEY,item,typedQty,"repurpose",{type:"raw_materials"})} disabled={!item.dishId}
+                                          title={item.dishId?"":"No recipe linked — can't compute ingredient breakdown"}
+                                          style={{flex:1,background:item.dishId?PURPLE_LIGHT:"#F3F4F6",color:item.dishId?PURPLE:"#9CA3AF",border:"none",borderRadius:6,padding:"6px",cursor:item.dishId?"pointer":"not-allowed",fontSize:11,fontWeight:700}}>
+                                          ⚗️ Raw Materials
+                                        </button>
+                                        <button onClick={()=>{setRepurposeTargetDish(repurposeTargetDish?null:{});setRepurposeDishSearch("");}}
+                                          style={{flex:1,background:repurposeTargetDish?PURPLE:"#F3F4F6",color:repurposeTargetDish?"#fff":"#374151",border:"none",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                                          🍽️ Another Dish
+                                        </button>
+                                        <button onClick={()=>{setRepurposeChoiceFor(null);setRepurposeTargetDish(null);}}
+                                          style={{background:"#F3F4F6",border:"none",borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:11,color:"#6B7280"}}>Cancel</button>
+                                      </div>
+                                      {repurposeTargetDish&&(
+                                        <div style={{position:"relative"}}>
+                                          <input value={repurposeTargetDish.name||repurposeDishSearch} onChange={e=>{setRepurposeDishSearch(e.target.value);setRepurposeTargetDish({});}}
+                                            placeholder="Search which dish this becomes..."
+                                            style={{width:"100%",fontSize:12,padding:"6px 9px",borderRadius:6,border:"1.5px solid "+PURPLE,boxSizing:"border-box",outline:"none"}} />
+                                          {repurposeDishSearch.trim()&&!repurposeTargetDish.id&&(
+                                            <div style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:8,marginTop:4,maxHeight:140,overflowY:"auto"}}>
+                                              {dishes.filter(d=>d.id!==item.dishId&&d.name.toLowerCase().includes(repurposeDishSearch.toLowerCase())).map(d=>(
+                                                <button key={d.id} onClick={()=>setRepurposeTargetDish({id:d.id,name:d.name})}
+                                                  style={{width:"100%",textAlign:"left",padding:"7px 9px",border:"none",background:"none",cursor:"pointer",fontSize:12,borderBottom:"1px solid #F3F4F6"}}>
+                                                  {d.name}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {repurposeTargetDish.id&&(
+                                            <button onClick={()=>{decideExcess(p,TODAY_KEY,item,typedQty,"repurpose",{type:"dish",dishId:repurposeTargetDish.id,dishName:repurposeTargetDish.name});setRepurposeChoiceFor(null);setRepurposeTargetDish(null);}}
+                                              style={{marginTop:6,width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:6,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                              Confirm → {repurposeTargetDish.name}
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div style={{display:"flex",gap:8,marginTop:8}}>
+                                      <button onClick={()=>setRepurposeChoiceFor(item.id)}
+                                        style={{flex:1,background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:7,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                        🔁 Repurpose
+                                      </button>
+                                      <button onClick={()=>decideExcess(p,TODAY_KEY,item,typedQty,"waste")}
+                                        style={{flex:1,background:"#FEE2E2",color:"#991B1B",border:"none",borderRadius:7,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                        🗑️ Waste
+                                      </button>
+                                    </div>
+                                  )
+                                )}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
+                          </>
                         )}
-                        {!canClose&&<div style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:10}}>⚠️ {pending.length} excess dish{pending.length>1?"es":""} still need a Repurpose/Waste decision before closing.</div>}
-                        <button onClick={()=>closeCanteen(p)} disabled={!canClose}
-                          style={{width:"100%",background:canClose?"#111827":"#D1D5DB",color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:canClose?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                        {undecidedTyped>0&&<div style={{fontSize:12,color:"#F59E0B",fontWeight:600,marginBottom:10}}>⚠️ {undecidedTyped} dish{undecidedTyped>1?"es":""} with a leftover amount typed but not yet logged — Repurpose or Waste it, or it won't be recorded.</div>}
+                        <button onClick={()=>closeCanteen(p)}
+                          style={{width:"100%",background:"#111827",color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:700}}>
                           🔒 Confirm Close for {p}
                         </button>
                       </>
@@ -2295,7 +2340,7 @@ export default function KFCanteen() {
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
               </div>
               {(role==="admin"||role==="staff-admin"||role==="staff")&&(
-                <button onClick={()=>{setClosePlant((role==="staff"||role==="staff-admin")?currentUser.plant:(closePlant||"KF-Main"));setShowCloseModal(true);}}
+                <button onClick={()=>{setClosePlant((role==="staff"||role==="staff-admin")?currentUser.plant:(closePlant||"KF-Main"));setExcessInputs({});setRepurposeChoiceFor(null);setShowCloseModal(true);}}
                   style={{background:"#111827",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
                   🔒 Close Canteen
                 </button>
@@ -2733,7 +2778,7 @@ export default function KFCanteen() {
           </div>
 
           <div style={{display:"flex",gap:6,marginBottom:16}}>
-            {[{id:"stock",label:"📦 Stock"},{id:"waste",label:"🗑️ Waste Log"}].map(t=>(
+            {[{id:"stock",label:"📦 Stock"},{id:"repurposed",label:"🔁 Repurposed Log"},{id:"waste",label:"🗑️ Waste Log"}].map(t=>(
               <button key={t.id} onClick={()=>setRawMaterialsTab(t.id)}
                 style={{padding:"7px 16px",borderRadius:8,border:"1px solid #E5E7EB",background:rawMaterialsTab===t.id?PURPLE:"#fff",color:rawMaterialsTab===t.id?"#fff":"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>
                 {t.label}
@@ -2752,6 +2797,20 @@ export default function KFCanteen() {
                     <div style={{fontSize:11,color:"#9CA3AF"}}>{d.date} · logged by {d.decidedBy}</div>
                   </div>
                   <div style={{fontWeight:800,fontSize:14,color:"#991B1B"}}>{formatQtyLong(d.excessQty,d.servingUnit)}</div>
+                </div>
+              ))}
+            </div>
+          ) : rawMaterialsTab==="repurposed" ? (
+            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
+              {excessDecisions.filter(d=>d.decision==="repurpose").length===0 ? (
+                <Empty msg="No repurposed excess logged" sub="Excess dishes marked as repurposed at canteen close will show up here, with where they went." />
+              ) : excessDecisions.filter(d=>d.decision==="repurpose").map(d=>(
+                <div key={d.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{d.dishName} <span style={{color:"#9CA3AF",fontWeight:400}}>· {d.plant}</span></div>
+                    <div style={{fontSize:11,color:"#9CA3AF"}}>{d.date} · logged by {d.decidedBy} · → {d.repurposeTargetType==="dish"?d.repurposeTargetName:"Raw Materials"}</div>
+                  </div>
+                  <div style={{fontWeight:800,fontSize:14,color:"#059669"}}>{formatQtyLong(d.excessQty,d.servingUnit)}</div>
                 </div>
               ))}
             </div>
@@ -2784,7 +2843,14 @@ export default function KFCanteen() {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{m.name}</div>
                   <div style={{fontSize:12,color:"#6B7280"}}>₱{m.buyPrice.toFixed(2)} / {m.unit}</div>
-                  {m.excessStock>0&&<div style={{fontSize:11,color:"#059669",fontWeight:600,marginTop:2}}>🔁 +{m.excessStock.toFixed(2)} {m.unit} excess (repurposed, no cost)</div>}
+                  {m.excessStock>0&&(
+                    <div style={{marginTop:2}}>
+                      <div style={{fontSize:11,color:"#059669",fontWeight:600}}>🔁 +{m.excessStock.toFixed(2)} {m.unit} excess (repurposed, no cost)</div>
+                      {rawMaterialLog.filter(l=>l.rawMaterial===m.name&&l.source==="excess").slice(0,4).map(l=>(
+                        <div key={l.id} style={{fontSize:10,color:"#9CA3AF",marginTop:1}}>· {l.note||`+${l.qty.toFixed(2)} ${l.unit}`}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div style={{textAlign:"center",minWidth:70}}>
                   <div style={{fontSize:16,fontWeight:800,color:"#111"}}>{m.stock}</div>
