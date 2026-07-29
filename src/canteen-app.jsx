@@ -63,6 +63,21 @@ const MEAL_CATS = ["ALL","BREAKFAST","LUNCH","SNACK"];
 
 
 const PLANTS = ["KF-Main","Colortree","KF-Global"];
+
+// dish serving units — a dish's serving size can be measured by weight,
+// piece count, or cup count. The excess-repurpose math is a straight
+// proportion (excess / servingSize * ingredientQty) so it's unit-agnostic;
+// only labels/inputs need to know which unit is in play.
+const SERVING_UNITS = [
+  { id:"g",   label:"Weight (grams)", icon:"⚖️" },
+  { id:"pcs", label:"Pieces",         icon:"🔢" },
+  { id:"cup", label:"Cups",           icon:"🥤" },
+];
+const unitIcon = (unit) => (SERVING_UNITS.find(u=>u.id===unit)||SERVING_UNITS[0]).icon;
+const unitSuffix = (unit, qty) => unit==="pcs" ? (qty===1?"pc":"pcs") : unit==="cup" ? (qty===1?"cup":"cups") : "g";
+const formatServing = (qty, unit) => (qty==null||qty==="") ? "" : `${qty}${unit==="g"?"":" "}${unitSuffix(unit,qty)}`;
+// same idea but for larger prepared/sold/excess quantities — grams roll up to kg, counts stay as-is
+const formatQtyLong = (qty, unit) => unit==="g" ? `${(qty/1000).toFixed(2)}kg` : `${Number(qty.toFixed(2))} ${unitSuffix(unit,qty)}`;
 const toProperCase = str => str.trim().replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
 /* ── footer (shown on every page, fixed height so it never shifts between pages) ── */
@@ -309,7 +324,7 @@ export default function KFCanteen() {
   useEffect(() => { fetchDishes().then(setDishes); }, []);
   const [showAddDish, setShowAddDish] = useState(false);
   const [editDishId, setEditDishId] = useState(null);
-  const [newDish, setNewDish] = useState({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
+  const [newDish, setNewDish] = useState({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g", ingredients:[] });
   const [dishDragOver, setDishDragOver] = useState(false);
   const dishPhotoInputRef = useRef(null);
   const handleDishPhotoFile = useCallback((file) => {
@@ -661,7 +676,7 @@ export default function KFCanteen() {
     const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
       date: orderDate,
       plant: plant,
-      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
+      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
     setOrders(prev=>[order,...prev]);
     dbInsertOrder(order);
     setOtherProducts(prev => {
@@ -731,7 +746,7 @@ export default function KFCanteen() {
         days.forEach(day=>{
           const existingSlot = next[weekKey][day]||[];
           if(existingSlot.some(i=>i.dishId===newItem.dishId)){ skippedDuplicates++; return; }
-          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?Math.max(0,parseFloat(newItem.grams)):null, dishId:newItem.dishId||null };
+          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?Math.max(0,parseFloat(newItem.grams)):null, servingUnit:newItem.servingUnit||"g", dishId:newItem.dishId||null };
           next[weekKey][day] = [...existingSlot, item];
           dbInsertMenuItem(weekKey, day, item);
         });
@@ -825,7 +840,7 @@ export default function KFCanteen() {
   /* ── DISHES (recipes) ── */
   const saveDish = () => {
     if(!newDish.name||!newDish.price||parseFloat(newDish.price)<=0) return;
-    const dishData = { name:newDish.name, cat:newDish.cat, price:parseFloat(newDish.price), img:newDish.photo||newDish.img||"🍽️", isPhoto:!!newDish.photo, grams:newDish.grams?Math.max(0,parseFloat(newDish.grams)):null };
+    const dishData = { name:newDish.name, cat:newDish.cat, price:parseFloat(newDish.price), img:newDish.photo||newDish.img||"🍽️", isPhoto:!!newDish.photo, grams:newDish.grams?Math.max(0,parseFloat(newDish.grams)):null, servingUnit:newDish.servingUnit||"g" };
     const ingredients = newDish.ingredients.filter(i=>i.rawMaterialId&&i.quantity);
     if(editDishId){
       setDishes(prev=>prev.map(d=>d.id===editDishId?{...d,...dishData,ingredients}:d));
@@ -836,19 +851,19 @@ export default function KFCanteen() {
       dbInsertDish(dish);
       if(dishOriginContext){
         // came from Add Menu Item's "Create New Dish" shortcut — link it and go back
-        setNewItem(p=>({...p,dishId:dish.id,name:dish.name,price:String(dish.price),cat:dish.cat||"LUNCH",img:dish.img,photo:dish.isPhoto?dish.img:null,grams:dish.grams?String(dish.grams):""}));
+        setNewItem(p=>({...p,dishId:dish.id,name:dish.name,price:String(dish.price),cat:dish.cat||"LUNCH",img:dish.img,photo:dish.isPhoto?dish.img:null,grams:dish.grams?String(dish.grams):"",servingUnit:dish.servingUnit||"g"}));
         setShowAddItem(dishOriginContext);
         setDishOriginContext(null);
       }
     }
-    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
+    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g", ingredients:[] });
     setEditDishId(null);
     setShowAddDish(false);
   };
   const closeAddDish = () => {
     setShowAddDish(false);
     setEditDishId(null);
-    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", ingredients:[] });
+    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g", ingredients:[] });
     if(dishOriginContext){
       setShowAddItem(dishOriginContext);
       setDishOriginContext(null);
@@ -862,9 +877,12 @@ export default function KFCanteen() {
   const isPlantClosed = (plant, date=TODAY_KEY) =>
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
 
-  const savePreparedGrams = (menuItemId, plant, gramsVal) => {
-    const grams = Math.max(0, parseFloat(gramsVal)||0);
-    const entry = { id:`${plant}_${TODAY_KEY}_${menuItemId}`, plant, date:TODAY_KEY, menuItemId, preparedGrams:grams, updatedBy:currentUser.name };
+  // "qty" below means "amount in the dish's own serving_unit" — literal grams
+  // for weight-tracked dishes, a plain piece/cup count otherwise. isWeight
+  // tells the caller whether to convert a kg-typed UI input to grams.
+  const savePreparedQty = (menuItemId, plant, amount, isWeight) => {
+    const qty = Math.max(0, amount||0) * (isWeight?1000:1);
+    const entry = { id:`${plant}_${TODAY_KEY}_${menuItemId}`, plant, date:TODAY_KEY, menuItemId, preparedQty:qty, updatedBy:currentUser.name };
     setDailyPrep(prev=>{
       const exists = prev.some(p=>p.plant===plant&&p.date===TODAY_KEY&&p.menuItemId===menuItemId);
       return exists ? prev.map(p=>(p.plant===plant&&p.date===TODAY_KEY&&p.menuItemId===menuItemId)?entry:p) : [...prev, entry];
@@ -872,7 +890,7 @@ export default function KFCanteen() {
     dbUpsertDailyPrep(entry);
   };
 
-  const getSoldGrams = (plant, date, item) => orders
+  const getSoldQty = (plant, date, item) => orders
     .filter(o=>o.plant===plant&&o.date===date)
     .flatMap(o=>o.items)
     .filter(it=>it.name===item.name&&it.grams)
@@ -885,16 +903,16 @@ export default function KFCanteen() {
     const todaysItems = (menu[weekKey]&&menu[weekKey][day])||[];
     return todaysItems.map(item=>{
       const prep = dailyPrep.find(p=>p.plant===plant&&p.date===date&&p.menuItemId===item.id);
-      if(!prep||prep.preparedGrams<=0) return null;
-      const soldGrams = getSoldGrams(plant, date, item);
-      const excessGrams = Math.max(0, prep.preparedGrams - soldGrams);
+      if(!prep||prep.preparedQty<=0) return null;
+      const soldQty = getSoldQty(plant, date, item);
+      const excessQty = Math.max(0, prep.preparedQty - soldQty);
       const decided = excessDecisions.find(d=>d.plant===plant&&d.date===date&&d.menuItemId===item.id);
-      return { item, preparedGrams:prep.preparedGrams, soldGrams, excessGrams, decided };
+      return { item, preparedQty:prep.preparedQty, soldQty, excessQty, decided };
     }).filter(Boolean);
   };
 
-  const decideExcess = (plant, date, item, excessGrams, decision) => {
-    const decisionEntry = { id:"exd"+Date.now()+item.id, plant, date, menuItemId:item.id, dishName:item.name, excessGrams, decision, decidedBy:currentUser.name, decidedAt:new Date().toISOString() };
+  const decideExcess = (plant, date, item, excessQty, decision) => {
+    const decisionEntry = { id:"exd"+Date.now()+item.id, plant, date, menuItemId:item.id, dishName:item.name, excessQty, servingUnit:item.servingUnit||"g", decision, decidedBy:currentUser.name, decidedAt:new Date().toISOString() };
     setExcessDecisions(prev=>[decisionEntry, ...prev]);
     dbInsertExcessDecision(decisionEntry);
 
@@ -902,7 +920,7 @@ export default function KFCanteen() {
       const dish = dishes.find(d=>d.id===item.dishId);
       if(dish&&dish.ingredients&&dish.ingredients.length&&dish.grams){
         dish.ingredients.forEach(ing=>{
-          const addAmount = excessGrams * (ing.quantity / dish.grams);
+          const addAmount = excessQty * (ing.quantity / dish.grams);
           if(addAmount<=0) return;
           setRawMaterials(prev=>prev.map(m=>{
             if(m.id!==ing.rawMaterialId) return m;
@@ -1620,8 +1638,8 @@ export default function KFCanteen() {
         <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:6,flex:1}}>
           <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
           {item.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280",background:"#F3F4F6",borderRadius:20,padding:"2px 8px",alignSelf:"flex-start"}}>
-            <span>⚖️</span>
-            <span>{item.grams}g per serving</span>
+            <span>{unitIcon(item.servingUnit)}</span>
+            <span>{formatServing(item.grams,item.servingUnit)} per serving</span>
           </div>}
           {/* buy/sell price — admin & staff only */}
           {(role==="admin"||role==="staff-admin"||role==="staff") && item.buyPrice!=null ? (
@@ -1728,7 +1746,7 @@ export default function KFCanteen() {
                     {item.name}
                     {item.scheduledDate&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>📅 {item.scheduledDate instanceof Date?formatDateLabel(item.scheduledDate):item.scheduledDate}</span>}
                   </div>
-                  {item.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280",background:"#F3F4F6",borderRadius:20,padding:"1px 7px",margin:"2px 0"}}>⚖️ {item.grams}g per serving</div>}
+                  {item.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280",background:"#F3F4F6",borderRadius:20,padding:"1px 7px",margin:"2px 0"}}>{unitIcon(item.servingUnit)} {formatServing(item.grams,item.servingUnit)} per serving</div>}
                   <div style={{fontSize:12,color:"#6B7280"}}>₱{item.price} each</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1798,7 +1816,7 @@ export default function KFCanteen() {
                     <div>
                       <span>{it.name} × {it.qty}</span>
                       {it.scheduledDate&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>📅 {it.scheduledDate}</span>}
-                      {it.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,color:"#9CA3AF",marginLeft:6}}>⚖️ {it.grams}g/serving</div>}
+                      {it.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,color:"#9CA3AF",marginLeft:6}}>{unitIcon(it.servingUnit)} {formatServing(it.grams,it.servingUnit)}/serving</div>}
                     </div>
                     <span style={{fontWeight:600,flexShrink:0}}>₱{it.price*it.qty}</span>
                   </div>
@@ -1986,7 +2004,7 @@ export default function KFCanteen() {
                         <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:250,overflow:"hidden",marginTop:2,maxHeight:220,overflowY:"auto"}}>
                           {dishes.filter(d=>d.name.toLowerCase().includes(dishLinkSearch.toLowerCase())).map(d=>(
                             <button key={d.id} onMouseDown={()=>{
-                              setNewItem(p=>({...p,dishId:d.id,name:d.name,price:String(d.price),cat:d.cat||"LUNCH",img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):""}));
+                              setNewItem(p=>({...p,dishId:d.id,name:d.name,price:String(d.price),cat:d.cat||"LUNCH",img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):"",servingUnit:d.servingUnit||"g"}));
                               setDishLinkSearch("");
                             }} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 12px",border:"none",borderBottom:"1px solid #F3F4F6",background:"none",cursor:"pointer",textAlign:"left"}}>
                               <span style={{fontSize:18}}>{d.isPhoto?"🍽️":d.img}</span>
@@ -2041,18 +2059,23 @@ export default function KFCanteen() {
               </div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
-                <div style={{fontSize:12,color:"#6B7280"}}>{item.cat} · ₱{item.price}{item.grams?` · ⚖️ ${item.grams}g/serving`:""}</div>
+                <div style={{fontSize:12,color:"#6B7280"}}>{item.cat} · ₱{item.price}{item.grams?` · ${unitIcon(item.servingUnit)} ${formatServing(item.grams,item.servingUnit)}/serving`:""}</div>
               </div>
-              {mgIsToday&&item.grams&&(
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <label style={{fontSize:11,color:"#6B7280",fontWeight:600,whiteSpace:"nowrap"}}>Prepared (kg)</label>
-                  <input type="number" min="0" step="0.1" placeholder="0"
-                    key={`prep-${item.id}-${mgActivePlant}`}
-                    defaultValue={(()=>{const p=dailyPrep.find(d=>d.plant===mgActivePlant&&d.date===TODAY_KEY&&d.menuItemId===item.id);return p?(p.preparedGrams/1000):"";})()}
-                    onBlur={e=>savePreparedGrams(item.id, mgActivePlant, (parseFloat(e.target.value)||0)*1000)}
-                    style={{width:64,fontSize:12,padding:"5px 7px",borderRadius:7,border:"1px solid #E5E7EB",textAlign:"center"}} />
-                </div>
-              )}
+              {mgIsToday&&item.grams&&(()=>{
+                const unit = item.servingUnit||"g";
+                const isWeight = unit==="g";
+                const prep = dailyPrep.find(d=>d.plant===mgActivePlant&&d.date===TODAY_KEY&&d.menuItemId===item.id);
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <label style={{fontSize:11,color:"#6B7280",fontWeight:600,whiteSpace:"nowrap"}}>Prepared ({isWeight?"kg":unitSuffix(unit,2)})</label>
+                    <input type="number" min="0" step={isWeight?"0.1":"1"} placeholder="0"
+                      key={`prep-${item.id}-${mgActivePlant}`}
+                      defaultValue={prep?(isWeight?prep.preparedQty/1000:prep.preparedQty):""}
+                      onBlur={e=>savePreparedQty(item.id, mgActivePlant, parseFloat(e.target.value)||0, isWeight)}
+                      style={{width:64,fontSize:12,padding:"5px 7px",borderRadius:7,border:"1px solid #E5E7EB",textAlign:"center"}} />
+                  </div>
+                );
+              })()}
               <span style={{fontSize:11,background:item.available?"#D1FAE5":"#FEE2E2",color:item.available?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600}}>
                 {item.available?"Available":"Unavailable"}
               </span>
@@ -2092,7 +2115,7 @@ export default function KFCanteen() {
               productOuts[it.name] = (productOuts[it.name]||0)+it.qty;
             }));
             const excessList = getPlantExcessList(p);
-            const pending = excessList.filter(e=>e.excessGrams>0&&!e.decided);
+            const pending = excessList.filter(e=>e.excessQty>0&&!e.decided);
             const canClose = pending.length===0;
             return (
               <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
@@ -2152,32 +2175,32 @@ export default function KFCanteen() {
 
                         <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Excess Dishes</div>
                         {excessList.length===0 ? (
-                          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No prepared-weight logged for today's dishes — nothing to reconcile.</div>
+                          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No prepared quantity logged for today's dishes — nothing to reconcile.</div>
                         ) : (
                           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
-                            {excessList.map(({item,preparedGrams,soldGrams,excessGrams,decided})=>(
+                            {excessList.map(({item,preparedQty,soldQty,excessQty,decided})=>(
                               <div key={item.id} style={{background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px 14px"}}>
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:excessGrams>0?8:0}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:excessQty>0?8:0}}>
                                   <div>
                                     <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{item.name}</div>
-                                    <div style={{fontSize:11,color:"#6B7280"}}>Prepared {(preparedGrams/1000).toFixed(2)}kg · Sold {(soldGrams/1000).toFixed(2)}kg</div>
+                                    <div style={{fontSize:11,color:"#6B7280"}}>Prepared {formatQtyLong(preparedQty,item.servingUnit)} · Sold {formatQtyLong(soldQty,item.servingUnit)}</div>
                                   </div>
-                                  <div style={{fontSize:13,fontWeight:800,color:excessGrams>0?"#F59E0B":"#059669"}}>
-                                    {excessGrams>0?`${(excessGrams/1000).toFixed(2)}kg excess`:"No excess"}
+                                  <div style={{fontSize:13,fontWeight:800,color:excessQty>0?"#F59E0B":"#059669"}}>
+                                    {excessQty>0?`${formatQtyLong(excessQty,item.servingUnit)} excess`:"No excess"}
                                   </div>
                                 </div>
-                                {excessGrams>0&&(decided ? (
+                                {excessQty>0&&(decided ? (
                                   <div style={{fontSize:12,fontWeight:600,color:decided.decision==="repurpose"?"#059669":"#991B1B"}}>
                                     {decided.decision==="repurpose"?"🔁 Repurposed into raw materials":"🗑️ Marked as waste"}
                                   </div>
                                 ) : (
                                   <div style={{display:"flex",gap:8}}>
-                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessGrams,"repurpose")} disabled={!item.dishId}
+                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessQty,"repurpose")} disabled={!item.dishId}
                                       title={item.dishId?"":"No recipe linked — can't compute ingredient breakdown"}
                                       style={{flex:1,background:item.dishId?"#D1FAE5":"#F3F4F6",color:item.dishId?"#065F46":"#9CA3AF",border:"none",borderRadius:7,padding:"7px",cursor:item.dishId?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
                                       🔁 Repurpose
                                     </button>
-                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessGrams,"waste")}
+                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessQty,"waste")}
                                       style={{flex:1,background:"#FEE2E2",color:"#991B1B",border:"none",borderRadius:7,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:700}}>
                                       🗑️ Waste
                                     </button>
@@ -2728,7 +2751,7 @@ export default function KFCanteen() {
                     <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{d.dishName} <span style={{color:"#9CA3AF",fontWeight:400}}>· {d.plant}</span></div>
                     <div style={{fontSize:11,color:"#9CA3AF"}}>{d.date} · logged by {d.decidedBy}</div>
                   </div>
-                  <div style={{fontWeight:800,fontSize:14,color:"#991B1B"}}>{(d.excessGrams/1000).toFixed(2)}kg</div>
+                  <div style={{fontWeight:800,fontSize:14,color:"#991B1B"}}>{formatQtyLong(d.excessQty,d.servingUnit)}</div>
                 </div>
               ))}
             </div>
@@ -2838,8 +2861,8 @@ export default function KFCanteen() {
         const m = rawMaterials.find(rm=>rm.id===ing.rawMaterialId);
         return s + (m ? m.buyPrice*ing.quantity : 0);
       },0);
-      const openAddDish = () => { setEditDishId(null); setNewDish({name:"",cat:"LUNCH",price:"",img:"🍽️",photo:null,grams:"",ingredients:[]}); setShowAddDish(true); };
-      const openEditDish = (d) => { setEditDishId(d.id); setNewDish({name:d.name,cat:d.cat||"LUNCH",price:String(d.price),img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):"",ingredients:d.ingredients.map(i=>({...i}))}); setShowAddDish(true); };
+      const openAddDish = () => { setEditDishId(null); setNewDish({name:"",cat:"LUNCH",price:"",img:"🍽️",photo:null,grams:"",servingUnit:"g",ingredients:[]}); setShowAddDish(true); };
+      const openEditDish = (d) => { setEditDishId(d.id); setNewDish({name:d.name,cat:d.cat||"LUNCH",price:String(d.price),img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):"",servingUnit:d.servingUnit||"g",ingredients:d.ingredients.map(i=>({...i}))}); setShowAddDish(true); };
       return (
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
@@ -2873,7 +2896,7 @@ export default function KFCanteen() {
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,fontSize:14,color:"#111"}}>{d.name}</div>
-                      <div style={{fontSize:11,color:"#6B7280"}}>{d.cat} · ₱{d.price}</div>
+                      <div style={{fontSize:11,color:"#6B7280"}}>{d.cat} · ₱{d.price}{d.grams?` · ${unitIcon(d.servingUnit)} ${formatServing(d.grams,d.servingUnit)}/serving`:""}</div>
                     </div>
                   </div>
                   <div style={{fontSize:12,color:"#6B7280"}}>
@@ -4586,6 +4609,27 @@ export default function KFCanteen() {
                   <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Price (₱)</label>
                   <input value={newDish.price} onChange={e=>setNewDish(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
                     style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Serving Measured By</label>
+                  <div style={{display:"flex",gap:6,marginBottom:8}}>
+                    {SERVING_UNITS.map(u=>(
+                      <button key={u.id} type="button" onClick={()=>setNewDish(p=>({...p,servingUnit:u.id}))}
+                        style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid "+(newDish.servingUnit===u.id?PURPLE:"#E5E7EB"),background:newDish.servingUnit===u.id?PURPLE_LIGHT:"#fff",color:newDish.servingUnit===u.id?PURPLE:"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                        {u.icon} {u.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <input value={newDish.grams} onChange={e=>setNewDish(p=>({...p,grams:e.target.value}))}
+                      placeholder={newDish.servingUnit==="g"?"e.g. 370":newDish.servingUnit==="cup"?"e.g. 1":"e.g. 2"}
+                      type="number" min="0" step={newDish.servingUnit==="g"?"1":"0.5"}
+                      style={{width:120,fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    <span style={{fontSize:12,color:"#6B7280"}}>
+                      {newDish.servingUnit==="g" ? "grams per serving" : `${unitSuffix(newDish.servingUnit,parseFloat(newDish.grams)||0)} per serving`}
+                    </span>
+                  </div>
+                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Used to compute leftovers at Close Canteen — how much of one serving is prepared vs. sold.</div>
                 </div>
               </div>
 

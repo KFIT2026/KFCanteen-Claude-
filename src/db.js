@@ -96,6 +96,7 @@ const menuItemToDb = (weekKey, day, m) => ({
   is_photo: m.isPhoto,
   cat: m.cat,
   grams: m.grams,
+  serving_unit: m.servingUnit || "g",
   dish_id: m.dishId || null,
 });
 
@@ -109,6 +110,7 @@ export const fetchMenu = async () => {
     menu[r.week_key][r.day].push({
       id: r.id, name: r.name, price: Number(r.price), available: r.available,
       img: r.img, isPhoto: r.is_photo, cat: r.cat, grams: r.grams==null?null:Number(r.grams),
+      servingUnit: r.serving_unit || "g",
       dishId: r.dish_id || null,
     });
   });
@@ -307,6 +309,7 @@ export const dbDeleteRawMaterial = async (id) => {
 
 const dishToDb = (d) => ({
   id: d.id, name: d.name, cat: d.cat, price: d.price, img: d.img, is_photo: d.isPhoto, grams: d.grams,
+  serving_unit: d.servingUnit || "g",
 });
 const dishIngredientToDb = (dishId, ing) => ({
   id: ing.id, dish_id: dishId, raw_material_id: ing.rawMaterialId, quantity: ing.quantity,
@@ -321,6 +324,7 @@ export const fetchDishes = async () => {
   if (e2) console.error("fetch dish_ingredients failed:", e2);
   return dishRows.map(d => ({
     id: d.id, name: d.name, cat: d.cat, price: Number(d.price), img: d.img, isPhoto: d.is_photo, grams: d.grams==null?null:Number(d.grams),
+    servingUnit: d.serving_unit || "g",
     ingredients: (ingRows||[]).filter(i => i.dish_id === d.id).map(i => ({ id: i.id, rawMaterialId: i.raw_material_id, quantity: Number(i.quantity) })),
   }));
 };
@@ -388,11 +392,11 @@ export const dbInsertRawMaterialLog = async (entry) => {
 
 const prepToDb = (p) => ({
   id: p.id, plant: p.plant, date: p.date, menu_item_id: p.menuItemId,
-  prepared_grams: p.preparedGrams, updated_by: p.updatedBy,
+  prepared_qty: p.preparedQty, updated_by: p.updatedBy,
 });
 const prepFromDb = (r) => ({
   id: r.id, plant: r.plant, date: r.date, menuItemId: r.menu_item_id,
-  preparedGrams: Number(r.prepared_grams), updatedBy: r.updated_by,
+  preparedQty: Number(r.prepared_qty), updatedBy: r.updated_by,
 });
 
 export const fetchDailyPrep = async () => {
@@ -440,11 +444,12 @@ export const dbReopenPlantClose = async (id, reopenedBy) => {
 
 const excessDecisionToDb = (d) => ({
   id: d.id, plant: d.plant, date: d.date, menu_item_id: d.menuItemId||null,
-  dish_name: d.dishName, excess_grams: d.excessGrams, decision: d.decision, decided_by: d.decidedBy,
+  dish_name: d.dishName, excess_qty: d.excessQty, serving_unit: d.servingUnit||"g",
+  decision: d.decision, decided_by: d.decidedBy,
 });
 const excessDecisionFromDb = (r) => ({
   id: r.id, plant: r.plant, date: r.date, menuItemId: r.menu_item_id,
-  dishName: r.dish_name, excessGrams: Number(r.excess_grams), decision: r.decision,
+  dishName: r.dish_name, excessQty: Number(r.excess_qty), servingUnit: r.serving_unit||"g", decision: r.decision,
   decidedBy: r.decided_by, decidedAt: r.decided_at,
 });
 
