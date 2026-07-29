@@ -272,10 +272,11 @@ export const dbDeleteReceipt = async (id) => {
 /* ── raw_materials table ── */
 
 const rawMaterialToDb = (m) => ({
-  id: m.id, name: m.name, unit: m.unit, stock: m.stock, buy_price: m.buyPrice,
+  id: m.id, name: m.name, unit: m.unit, stock: m.stock, buy_price: m.buyPrice, excess_stock: m.excessStock,
 });
 const rawMaterialFromDb = (r) => ({
   id: r.id, name: r.name, unit: r.unit, stock: Number(r.stock), buyPrice: Number(r.buy_price),
+  excessStock: Number(r.excess_stock || 0),
 });
 
 export const fetchRawMaterials = async () => {
@@ -364,10 +365,12 @@ export const dbDeleteDish = async (id) => {
 const rawMaterialLogToDb = (l) => ({
   id: l.id, raw_material: l.rawMaterial, unit: l.unit, type: l.type,
   qty: l.qty, before: l.before, after: l.after, by: l.by, time: l.time,
+  source: l.source || "purchase", note: l.note || null,
 });
 const rawMaterialLogFromDb = (r) => ({
   id: r.id, rawMaterial: r.raw_material, unit: r.unit, type: r.type,
   qty: Number(r.qty), before: Number(r.before), after: Number(r.after), by: r.by, time: r.time,
+  source: r.source || "purchase", note: r.note || null,
 });
 
 export const fetchRawMaterialLog = async () => {
@@ -379,4 +382,79 @@ export const fetchRawMaterialLog = async () => {
 export const dbInsertRawMaterialLog = async (entry) => {
   const { error } = await supabase.from("raw_material_log").insert(rawMaterialLogToDb(entry));
   if (error) console.error("dbInsertRawMaterialLog failed:", error);
+};
+
+/* ── daily_menu_prep table (prepared weight per plant/date/menu item) ── */
+
+const prepToDb = (p) => ({
+  id: p.id, plant: p.plant, date: p.date, menu_item_id: p.menuItemId,
+  prepared_grams: p.preparedGrams, updated_by: p.updatedBy,
+});
+const prepFromDb = (r) => ({
+  id: r.id, plant: r.plant, date: r.date, menuItemId: r.menu_item_id,
+  preparedGrams: Number(r.prepared_grams), updatedBy: r.updated_by,
+});
+
+export const fetchDailyPrep = async () => {
+  const { data, error } = await supabase.from("daily_menu_prep").select("*");
+  if (error) { console.error("fetchDailyPrep failed:", error); return []; }
+  return data.map(prepFromDb);
+};
+
+export const dbUpsertDailyPrep = async (entry) => {
+  const { error } = await supabase.from("daily_menu_prep")
+    .upsert(prepToDb(entry), { onConflict: "plant,date,menu_item_id" });
+  if (error) console.error("dbUpsertDailyPrep failed:", error);
+};
+
+/* ── plant_closes table (end-of-day close per plant) ── */
+
+const closeToDb = (c) => ({
+  id: c.id, plant: c.plant, date: c.date, closed_by: c.closedBy,
+  reopened_by: c.reopenedBy || null, reopened_at: c.reopenedAt || null,
+});
+const closeFromDb = (r) => ({
+  id: r.id, plant: r.plant, date: r.date, closedBy: r.closed_by, closedAt: r.closed_at,
+  reopenedBy: r.reopened_by, reopenedAt: r.reopened_at,
+});
+
+export const fetchPlantCloses = async () => {
+  const { data, error } = await supabase.from("plant_closes").select("*");
+  if (error) { console.error("fetchPlantCloses failed:", error); return []; }
+  return data.map(closeFromDb);
+};
+
+export const dbInsertPlantClose = async (entry) => {
+  const { data, error } = await supabase.from("plant_closes").insert(closeToDb(entry)).select().single();
+  if (error) { console.error("dbInsertPlantClose failed:", error); return null; }
+  return closeFromDb(data);
+};
+
+export const dbReopenPlantClose = async (id, reopenedBy) => {
+  const { error } = await supabase.from("plant_closes")
+    .update({ reopened_by: reopenedBy, reopened_at: new Date().toISOString() }).eq("id", id);
+  if (error) console.error("dbReopenPlantClose failed:", error);
+};
+
+/* ── dish_excess_decisions table (repurpose/waste log) ── */
+
+const excessDecisionToDb = (d) => ({
+  id: d.id, plant: d.plant, date: d.date, menu_item_id: d.menuItemId||null,
+  dish_name: d.dishName, excess_grams: d.excessGrams, decision: d.decision, decided_by: d.decidedBy,
+});
+const excessDecisionFromDb = (r) => ({
+  id: r.id, plant: r.plant, date: r.date, menuItemId: r.menu_item_id,
+  dishName: r.dish_name, excessGrams: Number(r.excess_grams), decision: r.decision,
+  decidedBy: r.decided_by, decidedAt: r.decided_at,
+});
+
+export const fetchExcessDecisions = async () => {
+  const { data, error } = await supabase.from("dish_excess_decisions").select("*").order("decided_at", { ascending: false });
+  if (error) { console.error("fetchExcessDecisions failed:", error); return []; }
+  return data.map(excessDecisionFromDb);
+};
+
+export const dbInsertExcessDecision = async (entry) => {
+  const { error } = await supabase.from("dish_excess_decisions").insert(excessDecisionToDb(entry));
+  if (error) console.error("dbInsertExcessDecision failed:", error);
 };

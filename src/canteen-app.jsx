@@ -9,6 +9,9 @@ import {
   fetchRawMaterials, dbInsertRawMaterial, dbUpdateRawMaterial, dbDeleteRawMaterial,
   fetchDishes, dbInsertDish, dbUpdateDish, dbDeleteDish,
   fetchRawMaterialLog, dbInsertRawMaterialLog,
+  fetchDailyPrep, dbUpsertDailyPrep,
+  fetchPlantCloses, dbInsertPlantClose, dbReopenPlantClose,
+  fetchExcessDecisions, dbInsertExcessDecision,
 } from "./db";
 
 const PURPLE = "#6B21A8";
@@ -244,6 +247,7 @@ export default function KFCanteen() {
   useEffect(() => { fetchProducts().then(setOtherProducts); }, []);
   const [mgDay, setMgDay] = useState(TODAY);
   const [mgDate, setMgDate] = useState(new Date(TODAY_DATE));
+  const [mgPlant, setMgPlant] = useState("");
   const mgWeekKey = getWeekKey(mgDate);
   const mgWeekNumber = getWeekNumber(mgDate);
   const [showMgCal, setShowMgCal] = useState(false);
@@ -316,6 +320,17 @@ export default function KFCanteen() {
   }, []);
   const [dishSearch, setDishSearch] = useState("");
   const [dishLinkSearch, setDishLinkSearch] = useState("");
+
+  // close canteen / excess repurpose-or-waste
+  const [dailyPrep, setDailyPrep] = useState([]);
+  useEffect(() => { fetchDailyPrep().then(setDailyPrep); }, []);
+  const [plantCloses, setPlantCloses] = useState([]);
+  useEffect(() => { fetchPlantCloses().then(setPlantCloses); }, []);
+  const [excessDecisions, setExcessDecisions] = useState([]);
+  useEffect(() => { fetchExcessDecisions().then(setExcessDecisions); }, []);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closePlant, setClosePlant] = useState("");
+  const [rawMaterialsTab, setRawMaterialsTab] = useState("stock"); // "stock" | "waste"
 
   // receipts
   const [receipts, setReceipts] = useState([]);
@@ -628,8 +643,16 @@ export default function KFCanteen() {
   const placeOrder = () => {
     if(!cart.length) return;
     const plant = orderPlant || currentUser.plant || "KF-Main";
+    // orders with no scheduled (advance) date are for "today" — if this plant
+    // already closed today, roll them onto tomorrow instead of blocking the order.
+    // advance orders (scheduledDate already set) are left untouched.
+    const allAdvance = cart.every(c=>c.scheduledDate);
+    const plantClosedToday = !allAdvance && isPlantClosed(plant);
+    const orderDate = plantClosedToday
+      ? toDateKey(new Date(Date.now()+86400000))
+      : toDateKey(new Date());
     const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
-      date: toDateKey(new Date()),
+      date: orderDate,
       plant: plant,
       items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
     setOrders(prev=>[order,...prev]);
@@ -661,7 +684,12 @@ export default function KFCanteen() {
         setRawMaterials(prev => prev.map(m => {
           if(m.id!==ing.rawMaterialId) return m;
           const usedQty = ing.quantity * cartItem.qty;
-          const newStock = Math.max(0, m.stock - usedQty);
+          // use up excess (repurposed leftovers) before touching purchased stock
+          const excessBefore = m.excessStock||0;
+          const fromExcess = Math.min(excessBefore, usedQty);
+          const fromStock = usedQty - fromExcess;
+          const newExcess = excessBefore - fromExcess;
+          const newStock = Math.max(0, m.stock - fromStock);
           const logEntry = {
             id:"rml"+Date.now()+m.id, rawMaterial:m.name, unit:m.unit,
             type:"OUT", qty:usedQty, before:m.stock, after:newStock,
@@ -670,8 +698,8 @@ export default function KFCanteen() {
           };
           setRawMaterialLog(log=>[logEntry,...log]);
           dbInsertRawMaterialLog(logEntry);
-          dbUpdateRawMaterial(m.id, { stock:newStock });
-          return { ...m, stock:newStock };
+          dbUpdateRawMaterial(m.id, { stock:newStock, excessStock:newExcess });
+          return { ...m, stock:newStock, excessStock:newExcess };
         }));
       });
     });
@@ -820,6 +848,84 @@ export default function KFCanteen() {
     }
   };
   const removeDish = (id) => { if(!window.confirm("Remove this dish from the catalog? Any menu items still linked to it will keep showing but can no longer be edited via this dish.")) return; setDishes(prev=>prev.filter(d=>d.id!==id)); dbDeleteDish(id); };
+
+  /* ── CLOSE CANTEEN / EXCESS REPURPOSE-OR-WASTE ── */
+  const TODAY_KEY = toDateKey(TODAY_DATE);
+
+  const isPlantClosed = (plant, date=TODAY_KEY) =>
+    plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
+
+  const savePreparedGrams = (menuItemId, plant, gramsVal) => {
+    const grams = Math.max(0, parseFloat(gramsVal)||0);
+    const entry = { id:`${plant}_${TODAY_KEY}_${menuItemId}`, plant, date:TODAY_KEY, menuItemId, preparedGrams:grams, updatedBy:currentUser.name };
+    setDailyPrep(prev=>{
+      const exists = prev.some(p=>p.plant===plant&&p.date===TODAY_KEY&&p.menuItemId===menuItemId);
+      return exists ? prev.map(p=>(p.plant===plant&&p.date===TODAY_KEY&&p.menuItemId===menuItemId)?entry:p) : [...prev, entry];
+    });
+    dbUpsertDailyPrep(entry);
+  };
+
+  const getSoldGrams = (plant, date, item) => orders
+    .filter(o=>o.plant===plant&&o.date===date)
+    .flatMap(o=>o.items)
+    .filter(it=>it.name===item.name&&it.grams)
+    .reduce((s,it)=>s+it.grams*it.qty,0);
+
+  const getPlantExcessList = (plant, date=TODAY_KEY) => {
+    const dateObj = new Date(date+"T00:00:00");
+    const day = getDateKey(dateObj);
+    const weekKey = getWeekKey(dateObj);
+    const todaysItems = (menu[weekKey]&&menu[weekKey][day])||[];
+    return todaysItems.map(item=>{
+      const prep = dailyPrep.find(p=>p.plant===plant&&p.date===date&&p.menuItemId===item.id);
+      if(!prep||prep.preparedGrams<=0) return null;
+      const soldGrams = getSoldGrams(plant, date, item);
+      const excessGrams = Math.max(0, prep.preparedGrams - soldGrams);
+      const decided = excessDecisions.find(d=>d.plant===plant&&d.date===date&&d.menuItemId===item.id);
+      return { item, preparedGrams:prep.preparedGrams, soldGrams, excessGrams, decided };
+    }).filter(Boolean);
+  };
+
+  const decideExcess = (plant, date, item, excessGrams, decision) => {
+    const decisionEntry = { id:"exd"+Date.now()+item.id, plant, date, menuItemId:item.id, dishName:item.name, excessGrams, decision, decidedBy:currentUser.name, decidedAt:new Date().toISOString() };
+    setExcessDecisions(prev=>[decisionEntry, ...prev]);
+    dbInsertExcessDecision(decisionEntry);
+
+    if(decision==="repurpose" && item.dishId){
+      const dish = dishes.find(d=>d.id===item.dishId);
+      if(dish&&dish.ingredients&&dish.ingredients.length&&dish.grams){
+        dish.ingredients.forEach(ing=>{
+          const addAmount = excessGrams * (ing.quantity / dish.grams);
+          if(addAmount<=0) return;
+          setRawMaterials(prev=>prev.map(m=>{
+            if(m.id!==ing.rawMaterialId) return m;
+            const before = m.excessStock||0;
+            const after = before + addAmount;
+            dbUpdateRawMaterial(m.id, { excessStock: after });
+            const logEntry = { id:"rml"+Date.now()+m.id, rawMaterial:m.name, unit:m.unit, type:"IN", qty:addAmount, before, after,
+              by:currentUser.name, source:"excess", note:`Excess from ${item.name} · ${formatDateLabel(new Date(date+"T00:00:00"))} · ${plant}`,
+              time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
+            setRawMaterialLog(log=>[logEntry,...log]);
+            dbInsertRawMaterialLog(logEntry);
+            return { ...m, excessStock: after };
+          }));
+        });
+      }
+    }
+  };
+
+  const closeCanteen = (plant) => {
+    const entry = { id:"pc"+Date.now(), plant, date:TODAY_KEY, closedBy:currentUser.name };
+    setPlantCloses(prev=>[...prev, {...entry, closedAt:new Date().toISOString(), reopenedBy:null, reopenedAt:null}]);
+    dbInsertPlantClose(entry);
+    setShowCloseModal(false);
+  };
+
+  const reopenCanteen = (closeRecord) => {
+    if(!window.confirm(`Reopen ${closeRecord.plant} for ${TODAY_KEY}? This unlocks ordering/closing again — it won't undo any repurpose/waste decisions already made.`)) return;
+    dbReopenPlantClose(closeRecord.id, currentUser.name);
+    setPlantCloses(prev=>prev.map(c=>c.id===closeRecord.id?{...c,reopenedBy:currentUser.name,reopenedAt:new Date().toISOString()}:c));
+  };
 
   const addReceipts = () => {
     if(!receiptPhotos.length) return;
@@ -1703,9 +1809,11 @@ export default function KFCanteen() {
 
     /* ── MANAGE MENU (staff/admin) ── */
     if(activeTab==="mgmenu") {
+      const mgActivePlant = (role==="staff"||role==="staff-admin") ? currentUser.plant : (mgPlant||currentUser.plant||"KF-Main");
+      const mgIsToday = isSameDay(mgDate,TODAY_DATE);
       return (
       <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
           <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
             <Icon name="manage" size={20} color={PURPLE} /> Manage Weekly Menu {(role==="staff"||role==="staff-admin")&&<span style={{fontSize:13,fontWeight:500,color:PURPLE,background:PURPLE_LIGHT,padding:"2px 10px",borderRadius:20,marginLeft:6}}>📍 {currentUser.plant}</span>}
           </h2>
@@ -1713,6 +1821,17 @@ export default function KFCanteen() {
             <Icon name="plus" size={14} color="#fff" /> Add Item
           </button>
         </div>
+        {role==="admin"&&mgIsToday&&(
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,color:"#6B7280",fontWeight:600}}>Prepped-weight tracking for:</span>
+            {PLANTS.map(p=>(
+              <button key={p} onClick={()=>setMgPlant(p)}
+                style={{padding:"5px 14px",borderRadius:20,border:"1px solid #E5E7EB",background:mgActivePlant===p?PURPLE:"#fff",color:mgActivePlant===p?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
         {/* date picker */}
         <div style={{position:"relative",marginBottom:16,display:"inline-block"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -1917,6 +2036,16 @@ export default function KFCanteen() {
                 <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
                 <div style={{fontSize:12,color:"#6B7280"}}>{item.cat} · ₱{item.price}{item.grams?` · ⚖️ ${item.grams}g/serving`:""}</div>
               </div>
+              {mgIsToday&&item.grams&&(
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <label style={{fontSize:11,color:"#6B7280",fontWeight:600,whiteSpace:"nowrap"}}>Prepared (kg)</label>
+                  <input type="number" min="0" step="0.1" placeholder="0"
+                    key={`prep-${item.id}-${mgActivePlant}`}
+                    defaultValue={(()=>{const p=dailyPrep.find(d=>d.plant===mgActivePlant&&d.date===TODAY_KEY&&d.menuItemId===item.id);return p?(p.preparedGrams/1000):"";})()}
+                    onBlur={e=>savePreparedGrams(item.id, mgActivePlant, (parseFloat(e.target.value)||0)*1000)}
+                    style={{width:64,fontSize:12,padding:"5px 7px",borderRadius:7,border:"1px solid #E5E7EB",textAlign:"center"}} />
+                </div>
+              )}
               <span style={{fontSize:11,background:item.available?"#D1FAE5":"#FEE2E2",color:item.available?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600}}>
                 {item.available?"Available":"Unavailable"}
               </span>
@@ -1942,6 +2071,127 @@ export default function KFCanteen() {
       });
       return (
         <div>
+          {/* close canteen modal */}
+          {showCloseModal&&(()=>{
+            const p = closePlant;
+            const alreadyClosed = isPlantClosed(p);
+            const dayOrders = orders.filter(o=>o.plant===p&&o.date===TODAY_KEY);
+            const cashT = dayOrders.filter(o=>o.paymentType==="Cash").reduce((s,o)=>s+o.total,0);
+            const creditT = dayOrders.filter(o=>o.paymentType==="Credit").reduce((s,o)=>s+o.total,0);
+            const unpaidT = dayOrders.filter(o=>!o.paymentType).reduce((s,o)=>s+o.total,0);
+            const productOuts = {};
+            dayOrders.forEach(o=>o.items.forEach(it=>{
+              if(it.grams) return; // dish, not an "other product"
+              productOuts[it.name] = (productOuts[it.name]||0)+it.qty;
+            }));
+            const excessList = getPlantExcessList(p);
+            const pending = excessList.filter(e=>e.excessGrams>0&&!e.decided);
+            const canClose = pending.length===0;
+            return (
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+                <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:560,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+                  <div style={{background:"#111827",padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>🔒 Close Canteen</div>
+                      <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>{TODAY_DATE.toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"})}</div>
+                    </div>
+                    <button onClick={()=>setShowCloseModal(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
+                  </div>
+                  <div style={{padding:"22px"}}>
+                    {role==="admin"&&(
+                      <div style={{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}}>
+                        {PLANTS.map(pl=>(
+                          <button key={pl} onClick={()=>setClosePlant(pl)} disabled={!!alreadyClosed}
+                            style={{padding:"6px 14px",borderRadius:20,border:"1px solid #E5E7EB",background:closePlant===pl?PURPLE:"#fff",color:closePlant===pl?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:alreadyClosed?"not-allowed":"pointer"}}>
+                            {pl}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {alreadyClosed ? (
+                      <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"14px",fontSize:13,color:"#92400E",fontWeight:600,marginBottom:8}}>
+                        {p} is already closed for today by {alreadyClosed.closedBy}. Reopen it from Manage Orders first if you need to redo this.
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Today's Sales — {p}</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:18}}>
+                          <div style={{background:"#F0FDF4",borderRadius:10,padding:"10px",textAlign:"center"}}>
+                            <div style={{fontSize:17,fontWeight:800,color:"#059669"}}>₱{cashT}</div>
+                            <div style={{fontSize:10,color:"#065F46",fontWeight:600}}>💵 Cash</div>
+                          </div>
+                          <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px",textAlign:"center"}}>
+                            <div style={{fontSize:17,fontWeight:800,color:PURPLE}}>₱{creditT}</div>
+                            <div style={{fontSize:10,color:PURPLE,fontWeight:600}}>💳 Credit</div>
+                          </div>
+                          <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px",textAlign:"center"}}>
+                            <div style={{fontSize:17,fontWeight:800,color:"#92400E"}}>₱{unpaidT}</div>
+                            <div style={{fontSize:10,color:"#92400E",fontWeight:600}}>⏳ Unpaid</div>
+                          </div>
+                        </div>
+
+                        <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Other Products Sold Today</div>
+                        {Object.keys(productOuts).length===0 ? (
+                          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No other-product sales today.</div>
+                        ) : (
+                          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:18}}>
+                            {Object.entries(productOuts).map(([name,qty])=>(
+                              <div key={name} style={{background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:8,padding:"5px 10px",fontSize:12,color:"#374151"}}>
+                                {name} <strong>×{qty}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Excess Dishes</div>
+                        {excessList.length===0 ? (
+                          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No prepared-weight logged for today's dishes — nothing to reconcile.</div>
+                        ) : (
+                          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
+                            {excessList.map(({item,preparedGrams,soldGrams,excessGrams,decided})=>(
+                              <div key={item.id} style={{background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px 14px"}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:excessGrams>0?8:0}}>
+                                  <div>
+                                    <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{item.name}</div>
+                                    <div style={{fontSize:11,color:"#6B7280"}}>Prepared {(preparedGrams/1000).toFixed(2)}kg · Sold {(soldGrams/1000).toFixed(2)}kg</div>
+                                  </div>
+                                  <div style={{fontSize:13,fontWeight:800,color:excessGrams>0?"#F59E0B":"#059669"}}>
+                                    {excessGrams>0?`${(excessGrams/1000).toFixed(2)}kg excess`:"No excess"}
+                                  </div>
+                                </div>
+                                {excessGrams>0&&(decided ? (
+                                  <div style={{fontSize:12,fontWeight:600,color:decided.decision==="repurpose"?"#059669":"#991B1B"}}>
+                                    {decided.decision==="repurpose"?"🔁 Repurposed into raw materials":"🗑️ Marked as waste"}
+                                  </div>
+                                ) : (
+                                  <div style={{display:"flex",gap:8}}>
+                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessGrams,"repurpose")} disabled={!item.dishId}
+                                      title={item.dishId?"":"No recipe linked — can't compute ingredient breakdown"}
+                                      style={{flex:1,background:item.dishId?"#D1FAE5":"#F3F4F6",color:item.dishId?"#065F46":"#9CA3AF",border:"none",borderRadius:7,padding:"7px",cursor:item.dishId?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
+                                      🔁 Repurpose
+                                    </button>
+                                    <button onClick={()=>decideExcess(p,TODAY_KEY,item,excessGrams,"waste")}
+                                      style={{flex:1,background:"#FEE2E2",color:"#991B1B",border:"none",borderRadius:7,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                                      🗑️ Waste
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!canClose&&<div style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:10}}>⚠️ {pending.length} excess dish{pending.length>1?"es":""} still need a Repurpose/Waste decision before closing.</div>}
+                        <button onClick={()=>closeCanteen(p)} disabled={!canClose}
+                          style={{width:"100%",background:canClose?"#111827":"#D1D5DB",color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:canClose?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                          🔒 Confirm Close for {p}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {/* payment modal */}
           {/* Plant selection modal */}
       {/* payment modal */}
@@ -2007,12 +2257,34 @@ export default function KFCanteen() {
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
               <Icon name="manage" size={20} color={PURPLE} /> Manage Orders {(role==="staff"||role==="staff-admin")&&<span style={{fontSize:13,fontWeight:500,color:PURPLE,background:PURPLE_LIGHT,padding:"2px 10px",borderRadius:20,marginLeft:6}}>📍 {currentUser.plant}</span>}
             </h2>
-            {/* search bar */}
-            <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
-              <Icon name="search" size={15} color="#9CA3AF" />
-              <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name or order ID..."
-                style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              {/* search bar */}
+              <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
+                <Icon name="search" size={15} color="#9CA3AF" />
+                <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name or order ID..."
+                  style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+              </div>
+              {(role==="admin"||role==="staff-admin"||role==="staff")&&(
+                <button onClick={()=>{setClosePlant((role==="staff"||role==="staff-admin")?currentUser.plant:(closePlant||"KF-Main"));setShowCloseModal(true);}}
+                  style={{background:"#111827",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+                  🔒 Close Canteen
+                </button>
+              )}
             </div>
+          </div>
+
+          {/* close status per relevant plant(s) */}
+          <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+            {((role==="staff"||role==="staff-admin")?[currentUser.plant]:PLANTS).map(p=>{
+              const closeRec = isPlantClosed(p);
+              if(!closeRec) return null;
+              return (
+                <div key={p} style={{display:"flex",alignItems:"center",gap:8,background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:9,padding:"7px 12px",fontSize:12,color:"#92400E",fontWeight:600}}>
+                  🔒 {p} closed for today by {closeRec.closedBy}
+                  <button onClick={()=>reopenCanteen(closeRec)} style={{background:"#fff",border:"1px solid #FCD34D",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:11,color:"#92400E",fontWeight:700}}>Reopen</button>
+                </div>
+              );
+            })}
           </div>
 
           {/* order count summary - plant filtered for staff */}
@@ -2430,6 +2702,31 @@ export default function KFCanteen() {
             </button>
           </div>
 
+          <div style={{display:"flex",gap:6,marginBottom:16}}>
+            {[{id:"stock",label:"📦 Stock"},{id:"waste",label:"🗑️ Waste Log"}].map(t=>(
+              <button key={t.id} onClick={()=>setRawMaterialsTab(t.id)}
+                style={{padding:"7px 16px",borderRadius:8,border:"1px solid #E5E7EB",background:rawMaterialsTab===t.id?PURPLE:"#fff",color:rawMaterialsTab===t.id?"#fff":"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {rawMaterialsTab==="waste" ? (
+            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
+              {excessDecisions.filter(d=>d.decision==="waste").length===0 ? (
+                <Empty msg="No waste logged" sub="Excess dishes marked as waste at canteen close will show up here for accountability." />
+              ) : excessDecisions.filter(d=>d.decision==="waste").map(d=>(
+                <div key={d.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{d.dishName} <span style={{color:"#9CA3AF",fontWeight:400}}>· {d.plant}</span></div>
+                    <div style={{fontSize:11,color:"#9CA3AF"}}>{d.date} · logged by {d.decidedBy}</div>
+                  </div>
+                  <div style={{fontWeight:800,fontSize:14,color:"#991B1B"}}>{(d.excessGrams/1000).toFixed(2)}kg</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+          <>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
             <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
               <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{rawMaterials.length}</span>
@@ -2457,6 +2754,7 @@ export default function KFCanteen() {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{m.name}</div>
                   <div style={{fontSize:12,color:"#6B7280"}}>₱{m.buyPrice.toFixed(2)} / {m.unit}</div>
+                  {m.excessStock>0&&<div style={{fontSize:11,color:"#059669",fontWeight:600,marginTop:2}}>🔁 +{m.excessStock.toFixed(2)} {m.unit} excess (repurposed, no cost)</div>}
                 </div>
                 <div style={{textAlign:"center",minWidth:70}}>
                   <div style={{fontSize:16,fontWeight:800,color:"#111"}}>{m.stock}</div>
@@ -2473,6 +2771,8 @@ export default function KFCanteen() {
             ))}
             {displayedMaterials.length===0&&<Empty msg="No raw materials found" sub="Add ingredients like rice, meat, or vegetables to start tracking recipes." />}
           </div>
+          </>
+          )}
 
           {/* Add Raw Material modal */}
           {showAddRawMaterial&&(
