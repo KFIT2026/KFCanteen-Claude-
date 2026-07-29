@@ -467,3 +467,23 @@ export const dbInsertExcessDecision = async (entry) => {
   const { error } = await supabase.from("dish_excess_decisions").insert(excessDecisionToDb(entry));
   if (error) console.error("dbInsertExcessDecision failed:", error);
 };
+
+/* ── suggestions table ── */
+
+const suggestionToDb = (s) => ({
+  id: s.id, user_id: s.userId, user_name: s.userName, content: s.content,
+});
+const suggestionFromDb = (r) => ({
+  id: r.id, userId: r.user_id, userName: r.user_name, content: r.content, createdAt: r.created_at,
+});
+
+export const fetchSuggestions = async () => {
+  const { data, error } = await supabase.from("suggestions").select("*").order("created_at", { ascending: false });
+  if (error) { console.error("fetchSuggestions failed:", error); return []; }
+  return data.map(suggestionFromDb);
+};
+
+export const dbInsertSuggestion = async (entry) => {
+  const { error } = await supabase.from("suggestions").insert(suggestionToDb(entry));
+  if (error) console.error("dbInsertSuggestion failed:", error);
+};

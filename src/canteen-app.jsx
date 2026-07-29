@@ -11,6 +11,7 @@ import {
   fetchRawMaterialLog, dbInsertRawMaterialLog,
   fetchPlantCloses, dbInsertPlantClose, dbReopenPlantClose,
   fetchExcessDecisions, dbInsertExcessDecision,
+  fetchSuggestions, dbInsertSuggestion,
 } from "./db";
 
 const PURPLE = "#6B21A8";
@@ -126,6 +127,7 @@ const Icon = ({ name, size=16, color="currentColor" }) => {
     receipt: <><path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></>,
     expense: <><path d="M20 7H4a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 7V5a2 2 0 00-2-2H8a2 2 0 00-2 2v2"/><circle cx="16" cy="13.5" r="1.5"/></>,
     scale: <><path d="M12 3v18"/><path d="M5 7l-3 7a4 4 0 008 0z"/><path d="M19 7l-3 7a4 4 0 008 0z"/><path d="M3 7h18"/><path d="M9 3h6"/></>,
+    idea: <><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.5.4.8 1 .8 1.7v.6h6.4v-.6c0-.7.3-1.3.8-1.7A7 7 0 0012 2z"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"middle",flexShrink:0}}>
@@ -149,6 +151,7 @@ const NAV = {
     { id:"expenses",  label:"Expenses",        icon:"expense" },
     { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
+    { id:"suggestions",label:"Suggestions",    icon:"idea" },
   ],
   "staff-admin": [
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
@@ -159,17 +162,21 @@ const NAV = {
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
     { id:"expenses",  label:"Expenses",        icon:"expense" },
     { id:"history",   label:"Overall History", icon:"history" },
+    { id:"suggestions",label:"Suggestions",    icon:"idea" },
   ],
   staff: [
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
+    { id:"suggestions",label:"Suggestions",    icon:"idea" },
   ],
   user: [
     { id:"menu",     label:"Menu",            icon:"menu" },
     { id:"myorders", label:"My Orders",       icon:"orders" },
     { id:"cart",     label:"Cart",            icon:"cart" },
+    { id:"suggestions",label:"Suggestions",   icon:"idea" },
   ],
 };
+NAV.superadmin = NAV.admin;
 
 export default function KFCanteen() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -339,6 +346,13 @@ export default function KFCanteen() {
   useEffect(() => { fetchPlantCloses().then(setPlantCloses); }, []);
   const [excessDecisions, setExcessDecisions] = useState([]);
   useEffect(() => { fetchExcessDecisions().then(setExcessDecisions); }, []);
+
+  // suggestion box — everyone can submit; admin sees all submissions
+  // anonymized, superadmin sees who wrote each one (for moderation)
+  const [suggestions, setSuggestions] = useState([]);
+  useEffect(() => { fetchSuggestions().then(setSuggestions); }, []);
+  const [newSuggestionText, setNewSuggestionText] = useState("");
+
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closePlant, setClosePlant] = useState("");
   const [excessInputs, setExcessInputs] = useState({}); // menuItemId -> typed leftover qty (string)
@@ -369,6 +383,8 @@ export default function KFCanteen() {
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
   const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const role = currentUser?.role;
+  // superadmin has every admin permission, plus seeing who wrote a suggestion
+  const isAdminLike = role==="admin"||role==="superadmin";
 
   // derived from currently-loaded orders (not a hardcoded/session-local counter) so IDs
   // stay unique across page reloads and separate browser sessions — a fixed starting ref
@@ -397,7 +413,7 @@ export default function KFCanteen() {
       }
       setCurrentUser(updatedUser);
       setLoginError("");
-      setActiveTab(found.role==="user"?"menu":found.role==="admin"?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
+      setActiveTab(found.role==="user"?"menu":(found.role==="admin"||found.role==="superadmin")?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
       if(updatedUser.creditBalance < 100) setCreditNotif(true);
     } else setLoginError("Incorrect username or password.");
   };
@@ -418,7 +434,7 @@ export default function KFCanteen() {
     }
     setCurrentUser(updatedUser);
     setLoginError("");
-    setActiveTab(found.role==="user"?"menu":found.role==="admin"?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
+    setActiveTab(found.role==="user"?"menu":(found.role==="admin"||found.role==="superadmin")?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
     if(updatedUser.creditBalance < 100) setCreditNotif(true);
   };
 
@@ -954,6 +970,16 @@ export default function KFCanteen() {
     setPlantCloses(prev=>prev.map(c=>c.id===closeRecord.id?{...c,reopenedBy:currentUser.name,reopenedAt:new Date().toISOString()}:c));
   };
 
+  /* ── SUGGESTION BOX ── */
+  const submitSuggestion = () => {
+    const content = newSuggestionText.trim();
+    if(!content) return;
+    const entry = { id:"sug"+Date.now()+Math.random().toString(36).slice(2), userId:currentUser.id, userName:currentUser.name, content, createdAt:new Date().toISOString() };
+    setSuggestions(prev=>[entry, ...prev]);
+    dbInsertSuggestion(entry);
+    setNewSuggestionText("");
+  };
+
   const addReceipts = () => {
     if(!receiptPhotos.length) return;
     const uploadedAt = new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
@@ -1115,6 +1141,7 @@ export default function KFCanteen() {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
                 {[
                   {label:"Admin", username:"admin", password:"Koufu@2026++"},
+                  {label:"Superadmin", username:"superadmin", password:"Koufu@2026++"},
                   {label:"Staff Admin", username:"staffadmin", password:"Koufu@2026++"},
                   {label:"Staff-Admin · Ramon", username:"ramon.cruz", password:"Demo1234"},
                   {label:"Staff · Miguel", username:"miguel.santos", password:"Demo1234"},
@@ -1388,7 +1415,7 @@ export default function KFCanteen() {
         {/* Right side */}
         <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
           {/* Cart button for users and admin */}
-          {(role==="user"||role==="admin")&&(
+          {(role==="user"||isAdminLike)&&(
             <button onClick={()=>{setActiveTab("cart");setSidebarOpen(false);}}
               style={{background:activeTab==="cart"?PURPLE:PURPLE_LIGHT,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:activeTab==="cart"?"#fff":PURPLE,fontSize:13,display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
               <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
@@ -1438,7 +1465,7 @@ export default function KFCanteen() {
             </div>
             <div style={{minWidth:0}}>
               <div style={{fontWeight:700,fontSize:13,color:"#111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
-              <div style={{fontSize:11,color:PURPLE,fontWeight:600,textTransform:"capitalize"}}>{role==="user"?"Customer":role==="staff-admin"?"Staff-Admin":role==="staff"?"Staff":"Admin"}</div>
+              <div style={{fontSize:11,color:PURPLE,fontWeight:600,textTransform:"capitalize"}}>{role==="user"?"Customer":role==="staff-admin"?"Staff-Admin":role==="staff"?"Staff":role==="superadmin"?"Superadmin":"Admin"}</div>
               {currentUser.company&&<div style={{fontSize:10,color:"#6B7280",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.company}</div>}
             </div>
           </div>
@@ -1644,7 +1671,7 @@ export default function KFCanteen() {
             <span>{formatServing(item.grams,item.servingUnit)} per serving</span>
           </div>}
           {/* buy/sell price — admin & staff only */}
-          {(role==="admin"||role==="staff-admin"||role==="staff") && item.buyPrice!=null ? (
+          {(isAdminLike||role==="staff-admin"||role==="staff") && item.buyPrice!=null ? (
             <div style={{display:"flex",flexDirection:"column",gap:3}}>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <span style={{fontSize:11,color:"#EF4444",fontWeight:600}}>Buy ₱{item.buyPrice}</span>
@@ -2054,7 +2081,7 @@ export default function KFCanteen() {
                 {item.available?"Available":"Unavailable"}
               </span>
               <button onClick={()=>toggleAvail(mgWeekKey,mgDay,item.id)} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontSize:12,color:"#374151",fontWeight:500}}>Toggle</button>
-              {(role==="admin"||role==="staff-admin")&&<button onClick={()=>removeMenuItem(mgWeekKey,mgDay,item.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
+              {(isAdminLike||role==="staff-admin")&&<button onClick={()=>removeMenuItem(mgWeekKey,mgDay,item.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
                 <Icon name="trash" size={13} color="#991B1B" /> Remove
               </button>}
             </div>
@@ -2102,7 +2129,7 @@ export default function KFCanteen() {
                     <button onClick={()=>setShowCloseModal(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
                   </div>
                   <div style={{padding:"22px"}}>
-                    {role==="admin"&&(
+                    {isAdminLike&&(
                       <div style={{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}}>
                         {PLANTS.map(pl=>(
                           <button key={pl} onClick={()=>setClosePlant(pl)} disabled={!!alreadyClosed}
@@ -2339,7 +2366,7 @@ export default function KFCanteen() {
                 <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name or order ID..."
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
               </div>
-              {(role==="admin"||role==="staff-admin"||role==="staff")&&(
+              {(isAdminLike||role==="staff-admin"||role==="staff")&&(
                 <button onClick={()=>{setClosePlant((role==="staff"||role==="staff-admin")?currentUser.plant:(closePlant||"KF-Main"));setExcessInputs({});setRepurposeChoiceFor(null);setShowCloseModal(true);}}
                   style={{background:"#111827",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
                   🔒 Close Canteen
@@ -3007,7 +3034,7 @@ export default function KFCanteen() {
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
               <Icon name="receipt" size={20} color={PURPLE} /> Receipts
             </h2>
-            {(role==="admin"||role==="staff-admin")&&(
+            {(isAdminLike||role==="staff-admin")&&(
               <button onClick={()=>{setNewReceipt({date:toDateKey(new Date()),source:"Grocery",sourceName:"",purchaseType:"Grocery",note:""});setReceiptPhotos([]);setShowAddReceipt(true);}}
                 style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 <Icon name="plus" size={14} color="#fff" /> Add Receipts
@@ -3056,7 +3083,7 @@ export default function KFCanteen() {
           {sortedReceipts.length===0&&<Empty msg="No receipts yet" sub="Attach a photo of a purchase receipt to get started." />}
 
           {/* ADD RECEIPTS MODAL */}
-          {showAddReceipt&&(role==="admin"||role==="staff-admin")&&(
+          {showAddReceipt&&(isAdminLike||role==="staff-admin")&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
               <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:520,maxHeight:"90vh",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
                 <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
@@ -3982,17 +4009,21 @@ export default function KFCanteen() {
                             <option value="staff">Staff</option>
                             <option value="staff-admin">Staff-Admin</option>
                             <option value="admin">Admin</option>
+                            {role==="superadmin"&&<option value="superadmin">Superadmin</option>}
                           </select>
                           <button onClick={()=>setEditRoleId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
                         </div>
                       ) : (
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{background:u.role==="admin"?PURPLE_LIGHT:u.role==="staff"?"#E0F2FE":"#D1FAE5",color:u.role==="admin"?PURPLE:u.role==="staff"?"#0369A1":"#065F46",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>
-                            {u.role==="user"?"Customer":u.role==="staff-admin"?"Staff-Admin":u.role==="staff"?"Staff":"Admin"}
+                          <span style={{background:u.role==="superadmin"?"#FEF3C7":u.role==="admin"?PURPLE_LIGHT:u.role==="staff"?"#E0F2FE":"#D1FAE5",color:u.role==="superadmin"?"#92400E":u.role==="admin"?PURPLE:u.role==="staff"?"#0369A1":"#065F46",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>
+                            {u.role==="user"?"Customer":u.role==="staff-admin"?"Staff-Admin":u.role==="staff"?"Staff":u.role==="superadmin"?"Superadmin":"Admin"}
                           </span>
-                          <button onClick={()=>setEditRoleId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
-                            <Icon name="edit" size={12} color="#9CA3AF" />
-                          </button>
+                          {/* only a superadmin can change another superadmin's role — prevents a regular admin from demoting/tampering with the moderation-trusted tier */}
+                          {(role==="superadmin"||u.role!=="superadmin")&&(
+                            <button onClick={()=>setEditRoleId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
+                              <Icon name="edit" size={12} color="#9CA3AF" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -4292,7 +4323,7 @@ export default function KFCanteen() {
             <Icon name="history" size={20} color={PURPLE} /> Overall History
           </h2>
           <div style={{display:"flex",gap:4,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:4,marginBottom:20,width:"fit-content"}}>
-            {[{id:"orders",label:"📋 Orders"},...((role==="admin"||role==="staff-admin")?[{id:"inventory",label:"📦 Inventory"}]:[])].map(t=>(
+            {[{id:"orders",label:"📋 Orders"},...((isAdminLike||role==="staff-admin")?[{id:"inventory",label:"📦 Inventory"}]:[])].map(t=>(
               <button key={t.id} onClick={()=>setHistoryTab(t.id)}
                 style={{padding:"8px 20px",borderRadius:8,border:"none",background:historyTab===t.id?PURPLE:"transparent",color:historyTab===t.id?"#fff":"#6B7280",fontWeight:historyTab===t.id?700:400,fontSize:13,cursor:"pointer"}}>
                 {t.label}
@@ -4596,6 +4627,68 @@ export default function KFCanteen() {
                 </table>
               </div>
             </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ── SUGGESTION BOX ── */
+    if(activeTab==="suggestions") {
+      const myHistory = suggestions.filter(s=>s.userId===currentUser.id);
+      return (
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:"0 0 16px",display:"flex",alignItems:"center",gap:10}}>
+            <Icon name="idea" size={20} color={PURPLE} /> Suggestions
+          </h2>
+
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px",marginBottom:20}}>
+            <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Got an idea or feedback? Tell us — it's read anonymously unless it needs to be looked into.</label>
+            <textarea value={newSuggestionText} onChange={e=>setNewSuggestionText(e.target.value)} placeholder="Type your suggestion..." rows={4}
+              style={{width:"100%",fontSize:14,padding:"12px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",resize:"vertical",fontFamily:"inherit"}} />
+            <button onClick={submitSuggestion} disabled={!newSuggestionText.trim()}
+              style={{marginTop:10,background:newSuggestionText.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"10px 20px",cursor:newSuggestionText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700}}>
+              Submit Suggestion
+            </button>
+          </div>
+
+          <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 10px"}}>My Suggestion History</h3>
+          {myHistory.length===0 ? (
+            <Empty msg="No suggestions yet" sub="Anything you submit will show up here." />
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:isAdminLike?28:0}}>
+              {myHistory.map(s=>(
+                <div key={s.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px"}}>
+                  <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>{new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {isAdminLike&&(
+            <>
+              <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 4px"}}>All Suggestions</h3>
+              <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>
+                {role==="superadmin" ? "You can see who submitted each one — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter identity is hidden here. A superadmin can look it up if a suggestion needs to be traced back (e.g. foul language)."}
+              </div>
+              {suggestions.length===0 ? (
+                <Empty msg="No suggestions yet" sub="Submissions from every role will show up here." />
+              ) : (
+                <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
+                  {suggestions.map(s=>(
+                    <div key={s.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6"}}>
+                      <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                      <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6}}>
+                        {role==="superadmin"
+                          ? <span style={{fontWeight:600,color:PURPLE}}>{s.userName}</span>
+                          : <span style={{fontStyle:"italic"}}>Anonymous</span>}
+                        <span>· {new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       );
