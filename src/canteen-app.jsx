@@ -263,6 +263,8 @@ export default function KFCanteen() {
   const [otcCart, setOtcCart] = useState([]);
   const [otcPaymentModal, setOtcPaymentModal] = useState(false);
   const [otcDone, setOtcDone] = useState(false);
+  const [otcMenuSearch, setOtcMenuSearch] = useState("");
+  const [otcProductSearch, setOtcProductSearch] = useState("");
 
   // manage menu add form
   const [showAddItem, setShowAddItem] = useState(null);
@@ -428,25 +430,6 @@ export default function KFCanteen() {
     } else setLoginError("Incorrect username or password.");
   };
   const handleLogout = () => { setCurrentUser(null); setLoginForm({username:"",password:""}); setCart([]); setLoginError(""); setCreditNotif(false); setSidebarOpen(false); };
-
-  // Demo-only shortcut: log straight in as a seeded demo account without typing credentials.
-  const handleQuickLogin = (username, password) => {
-    const found = users.find(u=>u.username===username && u.password===password && u.registered);
-    if (!found) { setLoginError("Demo account not found — has the demo data been seeded?"); return; }
-    const today = new Date();
-    const day = today.getDate();
-    const lastDay = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
-    let updatedUser = found;
-    if(day===15||day===lastDay) {
-      updatedUser = {...found, creditBalance: found.creditLimit};
-      setUsers(prev=>prev.map(u=>u.id===found.id?updatedUser:u));
-      dbUpdateUser(found.id,{creditBalance:found.creditLimit});
-    }
-    setCurrentUser(updatedUser);
-    setLoginError("");
-    setActiveTab(found.role==="user"?"menu":(found.role==="admin"||found.role==="superadmin")?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
-    if(updatedUser.creditBalance < 100) setCreditNotif(true);
-  };
 
   /* ── DOWNLOAD ORDERS AS XLSX ── */
   const downloadOrdersExcel = (ordersToExport, date, filterType) => {
@@ -763,7 +746,7 @@ export default function KFCanteen() {
   };
 
   /* ── OVER THE COUNTER (staff-encoded walk-up sale) ── */
-  const resetOtc = () => { setOtcType(null); setOtcSearch(""); setOtcCustomer(null); setOtcCart([]); setOtcPaymentModal(false); };
+  const resetOtc = () => { setOtcType(null); setOtcSearch(""); setOtcCustomer(null); setOtcCart([]); setOtcPaymentModal(false); setOtcMenuSearch(""); setOtcProductSearch(""); };
   const otcAddItem = (item) => setOtcCart(prev=>{
     const ex = prev.find(c=>c.id===item.id);
     if(ex) return prev.map(c=>c.id===item.id?{...c,qty:c.qty+1}:c);
@@ -1191,28 +1174,6 @@ export default function KFCanteen() {
             {loginError && <p style={{color:"#EF4444",fontSize:12,margin:"6px 0 0",display:"flex",alignItems:"center",gap:5}}>⚠️ {loginError}</p>}
             <button onClick={handleLogin} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:18}}>Sign In</button>
 
-            <div style={{marginTop:20,paddingTop:16,borderTop:"1px dashed #E5E7EB"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8,textAlign:"center"}}>Quick Login (Demo)</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-                {[
-                  {label:"Admin", username:"admin", password:"Koufu@2026++"},
-                  {label:"Superadmin", username:"superadmin", password:"Koufu@2026++"},
-                  {label:"Staff Admin", username:"staffadmin", password:"Koufu@2026++"},
-                  {label:"Staff-Admin · Ramon", username:"ramon.cruz", password:"Demo1234"},
-                  {label:"Staff · Miguel", username:"miguel.santos", password:"Demo1234"},
-                  {label:"Staff · Grace", username:"grace.villanueva", password:"Demo1234"},
-                  {label:"Customer · Kim", username:"kim.delatorre", password:"Demo1234"},
-                  {label:"Customer · Angel", username:"angel.reyes", password:"Demo1234"},
-                  {label:"Customer · Mark", username:"mark.aquino", password:"Demo1234"},
-                  {label:"Outside Customer", username:"paolo.outside", password:"Demo1234"},
-                ].map(acc=>(
-                  <button key={acc.username} onClick={()=>handleQuickLogin(acc.username, acc.password)}
-                    style={{padding:"8px 6px",borderRadius:8,border:"1px solid #E5E7EB",background:"#F9FAFB",color:"#374151",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"center"}}>
-                    {acc.label}
-                  </button>
-                ))}
-              </div>
-            </div>
             <p style={{textAlign:"center",marginTop:16,fontSize:13,color:"#9CA3AF"}}>
               Don't have an account? <span onClick={()=>{
                 setShowEmployeeCheck(true);
@@ -3269,7 +3230,7 @@ export default function KFCanteen() {
 
     /* ── EXPENSES (admin/staff-admin) ── */
     if(activeTab==="expenses") {
-      const employees = users.filter(u=>u.isEmployee!==false&&u.registered);
+      const employees = users.filter(u=>u.isEmployee!==false&&u.registered&&u.role!=="superadmin");
       const monthPrefix = expenseYear+"-"+String(expenseMonth+1).padStart(2,"0");
       const monthOrders = orders.filter(o=>o.date&&o.date.startsWith(monthPrefix));
       const monthLabel = new Date(expenseYear,expenseMonth).toLocaleDateString("en-PH",{month:"long",year:"numeric"});
@@ -3425,7 +3386,7 @@ export default function KFCanteen() {
 
     /* ── PERSONNEL (admin) ── */
     if(activeTab==="personnel") {
-      const employees = users.filter(u=>u.isEmployee!==false);
+      const employees = users.filter(u=>u.isEmployee!==false&&u.role!=="superadmin");
       const outsideCustomers = users.filter(u=>u.isEmployee===false);
       const unregistered = employees.filter(u=>!u.registered);
       const registered = employees.filter(u=>u.registered);
@@ -4702,6 +4663,8 @@ export default function KFCanteen() {
       const todaysDay = getDateKey(TODAY_DATE);
       const todaysMenuItems = ((menu[todaysWeekKey]&&menu[todaysWeekKey][todaysDay])||[]).filter(i=>i.available);
       const availableProducts = otherProducts.filter(p=>p.available&&p.stock>0);
+      const todaysMenuMatches = otcMenuSearch.trim() ? todaysMenuItems.filter(i=>i.name.toLowerCase().includes(otcMenuSearch.trim().toLowerCase())) : [];
+      const availableProductMatches = otcProductSearch.trim() ? availableProducts.filter(p=>p.name.toLowerCase().includes(otcProductSearch.trim().toLowerCase())) : [];
       const employeeMatches = (otcType==="employee"&&otcSearch.trim())
         ? users.filter(u=>u.isEmployee&&(((u.idNumber||"").toLowerCase().includes(otcSearch.toLowerCase()))||u.name.toLowerCase().includes(otcSearch.toLowerCase()))).slice(0,8)
         : [];
@@ -4779,26 +4742,38 @@ export default function KFCanteen() {
               <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,alignItems:"start"}}>
                 <div>
                   <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Today's Menu</h3>
+                  <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 12px",background:"#fff",marginBottom:10}}>
+                    <Icon name="search" size={14} color="#9CA3AF" />
+                    <input value={otcMenuSearch} onChange={e=>setOtcMenuSearch(e.target.value)} placeholder="Search today's menu..."
+                      style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+                  </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:18}}>
-                    {todaysMenuItems.map(item=>(
+                    {todaysMenuMatches.map(item=>(
                       <button key={item.id} onClick={()=>otcAddItem(item)}
                         style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px",cursor:"pointer",textAlign:"left"}}>
                         <div style={{fontWeight:600,fontSize:12,color:"#111"}}>{item.name}</div>
                         <div style={{fontSize:12,color:PURPLE,fontWeight:700,marginTop:4}}>₱{item.price}</div>
                       </button>
                     ))}
-                    {todaysMenuItems.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No menu items scheduled for today.</div>}
+                    {!otcMenuSearch.trim()&&<div style={{fontSize:12,color:"#9CA3AF"}}>Type to search today's menu items.</div>}
+                    {otcMenuSearch.trim()&&todaysMenuMatches.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No menu items match "{otcMenuSearch}".</div>}
                   </div>
                   <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Other Products</h3>
+                  <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 12px",background:"#fff",marginBottom:10}}>
+                    <Icon name="search" size={14} color="#9CA3AF" />
+                    <input value={otcProductSearch} onChange={e=>setOtcProductSearch(e.target.value)} placeholder="Search other products..."
+                      style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+                  </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
-                    {availableProducts.map(p=>(
+                    {availableProductMatches.map(p=>(
                       <button key={p.id} onClick={()=>otcAddItem(p)}
                         style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px",cursor:"pointer",textAlign:"left"}}>
                         <div style={{fontWeight:600,fontSize:12,color:"#111"}}>{p.name}</div>
                         <div style={{fontSize:12,color:PURPLE,fontWeight:700,marginTop:4}}>₱{p.price}</div>
                       </button>
                     ))}
-                    {availableProducts.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No products in stock.</div>}
+                    {!otcProductSearch.trim()&&<div style={{fontSize:12,color:"#9CA3AF"}}>Type to search other products.</div>}
+                    {otcProductSearch.trim()&&availableProductMatches.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No products match "{otcProductSearch}".</div>}
                   </div>
                 </div>
 
@@ -4908,7 +4883,7 @@ export default function KFCanteen() {
             <>
               <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 4px"}}>All Suggestions</h3>
               <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>
-                {role==="superadmin" ? "You can see who submitted each one — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter identity is hidden here. A superadmin can look it up if a suggestion needs to be traced back (e.g. foul language)."}
+                {role==="superadmin" ? "You can see who submitted each one — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter identity is hidden here for privacy. It can still be looked up internally if a suggestion needs to be traced back (e.g. foul language)."}
               </div>
               {suggestions.length===0 ? (
                 <Empty msg="No suggestions yet" sub="Submissions from every role will show up here." />
