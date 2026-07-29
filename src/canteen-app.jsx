@@ -64,8 +64,8 @@ const toProperCase = str => str.trim().replace(/\w\S*/g, w => w.charAt(0).toUppe
 
 /* ── footer (shown on every page, fixed height so it never shifts between pages) ── */
 const FOOTER_HEIGHT = 156;
-const Footer = () => (
-  <footer style={{background:"#fff",borderTop:"1px solid #E5E7EB",flexShrink:0,height:FOOTER_HEIGHT,overflow:"hidden",display:"flex",alignItems:"center"}}>
+const Footer = ({offsetLeft=0}) => (
+  <footer style={{background:"#fff",borderTop:"1px solid #E5E7EB",flexShrink:0,height:FOOTER_HEIGHT,overflow:"hidden",display:"flex",alignItems:"center",marginLeft:offsetLeft,transition:"margin-left 0.25s"}}>
     <div style={{maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"0 1.5rem"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:24,flexWrap:"wrap"}}>
         <img src="/logos/koufu-globe.webp" alt="Kou Fu" style={{height:42,width:"auto"}} />
@@ -192,6 +192,7 @@ export default function KFCanteen() {
   const [importError, setImportError] = useState("");
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importProgress, setImportProgress] = useState({done:0, total:0});
+  const [importCreditLimit, setImportCreditLimit] = useState("500");
   const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF-Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF-Main"}]});
   const [addEmployeeError, setAddEmployeeError] = useState("");
   const [addEmployeeSubmitting, setAddEmployeeSubmitting] = useState(false);
@@ -199,12 +200,17 @@ export default function KFCanteen() {
   const [showBulkRemoveConfirm, setShowBulkRemoveConfirm] = useState(false);
   const [bulkRemoveSubmitting, setBulkRemoveSubmitting] = useState(false);
   const [bulkRemoveError, setBulkRemoveError] = useState("");
-  const [resetTarget, setResetTarget] = useState(null);
+  const [resetTargets, setResetTargets] = useState([]);
   const [resetStage, setResetStage] = useState("choose");
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [selectedRegisteredIds, setSelectedRegisteredIds] = useState([]);
+  const [showBulkCreditInput, setShowBulkCreditInput] = useState(false);
+  const [bulkCreditLimitVal, setBulkCreditLimitVal] = useState("");
+  const [bulkActionSubmitting, setBulkActionSubmitting] = useState(false);
+  const [bulkActionError, setBulkActionError] = useState("");
 
   // menu / filter state — keyed by traditional calendar week (e.g. "2026-30"), then Mon-Sat day name
   const [menu, setMenu] = useState({});
@@ -250,6 +256,12 @@ export default function KFCanteen() {
   const [productSearch, setProductSearch] = useState("");
   const [myOrderSearch, setMyOrderSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(typeof window!=="undefined" ? window.innerWidth>=1024 : true);
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth>=1024);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [historyTab, setHistoryTab] = useState("orders");
   const [salesDate, setSalesDate] = useState(TODAY_DATE);
   const [showSalesCalendar, setShowSalesCalendar] = useState(false);
@@ -673,16 +685,19 @@ export default function KFCanteen() {
 
   /* ── MENU MGMT ── */
   const addMenuItem = () => {
-    if(!newItem.dishId||!newItem.name||!newItem.price) return;
+    if(!newItem.dishId||!newItem.name||!newItem.price||parseFloat(newItem.price)<=0) return;
     const days = newItem.days&&newItem.days.length ? newItem.days : [mgDay];
     const weeks = newItem.weeks&&newItem.weeks.length ? newItem.weeks : [mgWeekKey];
+    let skippedDuplicates = 0;
     setMenu(prev=>{
       const next = {...prev};
       weeks.forEach(weekKey=>{
         next[weekKey] = {...(next[weekKey]||{})};
         days.forEach(day=>{
-          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?parseFloat(newItem.grams):null, dishId:newItem.dishId||null };
-          next[weekKey][day] = [...(next[weekKey][day]||[]), item];
+          const existingSlot = next[weekKey][day]||[];
+          if(existingSlot.some(i=>i.dishId===newItem.dishId)){ skippedDuplicates++; return; }
+          const item={ id:"m"+Date.now()+Math.random().toString(36).slice(2), name:newItem.name, price:parseFloat(newItem.price), available:true, img:newItem.photo||newItem.img||"🍽️", isPhoto:!!newItem.photo, cat:newItem.cat, grams:newItem.grams?Math.max(0,parseFloat(newItem.grams)):null, dishId:newItem.dishId||null };
+          next[weekKey][day] = [...existingSlot, item];
           dbInsertMenuItem(weekKey, day, item);
         });
       });
@@ -690,8 +705,9 @@ export default function KFCanteen() {
     });
     setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});
     setShowAddItem(null);
+    if(skippedDuplicates>0) alert(`This dish was already on ${skippedDuplicates} of the selected slot${skippedDuplicates>1?"s":""} — skipped to avoid duplicates.`);
   };
-  const removeMenuItem = (weekKey,day,id) => { setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].filter(i=>i.id!==id)}})); dbDeleteMenuItem(id); };
+  const removeMenuItem = (weekKey,day,id) => { if(!window.confirm("Remove this item from the menu?")) return; setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].filter(i=>i.id!==id)}})); dbDeleteMenuItem(id); };
   const toggleAvail = (weekKey,day,id) => {
     const item = menu[weekKey]?.[day]?.find(i=>i.id===id);
     setMenu(prev=>({...prev,[weekKey]:{...prev[weekKey],[day]:prev[weekKey][day].map(i=>i.id===id?{...i,available:!i.available}:i)}}));
@@ -724,14 +740,18 @@ export default function KFCanteen() {
 
   const addOtherProduct = () => {
     if(!newProduct.name||!newProduct.price||!newProduct.stock) return;
-    const p = { id:"op"+Date.now(), name:newProduct.name, buyPrice:parseFloat(newProduct.buyPrice)||0, price:parseFloat(newProduct.price), emoji:newProduct.emoji||"🛍️", photo:newProduct.photo||null, isPhoto:!!newProduct.photo, category:newProduct.category||"Others", stock:parseInt(newProduct.stock), available:parseInt(newProduct.stock)>0 };
+    const buyPrice = Math.max(0, parseFloat(newProduct.buyPrice)||0);
+    const price = Math.max(0, parseFloat(newProduct.price)||0);
+    const stock = Math.max(0, parseInt(newProduct.stock)||0);
+    if(price<=0) return;
+    const p = { id:"op"+Date.now(), name:newProduct.name, buyPrice, price, emoji:newProduct.emoji||"🛍️", photo:newProduct.photo||null, isPhoto:!!newProduct.photo, category:newProduct.category||"Others", stock, available:stock>0 };
     setOtherProducts(prev=>[...prev, p]);
     dbInsertProduct(p);
     setNewProduct({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
     setProductNameSuggestions([]);
     setShowAddProduct(false);
   };
-  const removeOtherProduct = (id) => { setOtherProducts(prev=>prev.filter(p=>p.id!==id)); dbDeleteProduct(id); };
+  const removeOtherProduct = (id) => { if(!window.confirm("Remove this product?")) return; setOtherProducts(prev=>prev.filter(p=>p.id!==id)); dbDeleteProduct(id); };
   const toggleOtherAvail = (id) => {
     const p = otherProducts.find(pp=>pp.id===id);
     setOtherProducts(prev=>prev.map(p=>p.id===id?{...p,available:!p.available}:p));
@@ -747,13 +767,13 @@ export default function KFCanteen() {
   /* ── RAW MATERIALS ── */
   const addRawMaterial = () => {
     if(!newRawMaterial.name||!newRawMaterial.unit) return;
-    const m = { id:"rm"+Date.now(), name:newRawMaterial.name, unit:newRawMaterial.unit, buyPrice:parseFloat(newRawMaterial.buyPrice)||0, stock:parseFloat(newRawMaterial.stock)||0 };
+    const m = { id:"rm"+Date.now(), name:newRawMaterial.name, unit:newRawMaterial.unit, buyPrice:Math.max(0,parseFloat(newRawMaterial.buyPrice)||0), stock:Math.max(0,parseFloat(newRawMaterial.stock)||0) };
     setRawMaterials(prev=>[...prev, m]);
     dbInsertRawMaterial(m);
     setNewRawMaterial({ name:"", unit:"kg", buyPrice:"", stock:"" });
     setShowAddRawMaterial(false);
   };
-  const removeRawMaterial = (id) => { setRawMaterials(prev=>prev.filter(m=>m.id!==id)); dbDeleteRawMaterial(id); };
+  const removeRawMaterial = (id) => { if(!window.confirm("Remove this raw material? Dishes using it will keep their recorded ingredient but it will no longer be trackable.")) return; setRawMaterials(prev=>prev.filter(m=>m.id!==id)); dbDeleteRawMaterial(id); };
   const addRawStock = (id, qty) => {
     const material = rawMaterials.find(m=>m.id===id);
     if(!material||!qty||qty<=0) return;
@@ -769,8 +789,8 @@ export default function KFCanteen() {
 
   /* ── DISHES (recipes) ── */
   const saveDish = () => {
-    if(!newDish.name||!newDish.price) return;
-    const dishData = { name:newDish.name, cat:newDish.cat, price:parseFloat(newDish.price), img:newDish.photo||newDish.img||"🍽️", isPhoto:!!newDish.photo, grams:newDish.grams?parseFloat(newDish.grams):null };
+    if(!newDish.name||!newDish.price||parseFloat(newDish.price)<=0) return;
+    const dishData = { name:newDish.name, cat:newDish.cat, price:parseFloat(newDish.price), img:newDish.photo||newDish.img||"🍽️", isPhoto:!!newDish.photo, grams:newDish.grams?Math.max(0,parseFloat(newDish.grams)):null };
     const ingredients = newDish.ingredients.filter(i=>i.rawMaterialId&&i.quantity);
     if(editDishId){
       setDishes(prev=>prev.map(d=>d.id===editDishId?{...d,...dishData,ingredients}:d));
@@ -799,7 +819,7 @@ export default function KFCanteen() {
       setDishOriginContext(null);
     }
   };
-  const removeDish = (id) => { setDishes(prev=>prev.filter(d=>d.id!==id)); dbDeleteDish(id); };
+  const removeDish = (id) => { if(!window.confirm("Remove this dish from the catalog? Any menu items still linked to it will keep showing but can no longer be edited via this dish.")) return; setDishes(prev=>prev.filter(d=>d.id!==id)); dbDeleteDish(id); };
 
   const addReceipts = () => {
     if(!receiptPhotos.length) return;
@@ -822,7 +842,7 @@ export default function KFCanteen() {
     setReceiptPhotos([]);
     setNewReceipt({ date:toDateKey(new Date()), source:"Grocery", sourceName:"", purchaseType:"Grocery", note:"" });
   };
-  const removeReceipt = (id) => { setReceipts(prev=>prev.filter(r=>r.id!==id)); dbDeleteReceipt(id); };
+  const removeReceipt = (id) => { if(!window.confirm("Remove this receipt? This cannot be undone.")) return; setReceipts(prev=>prev.filter(r=>r.id!==id)); dbDeleteReceipt(id); };
 
   /* ── FILTERED ITEMS ── */
   const visibleItems = useMemo(()=>{
@@ -1206,15 +1226,17 @@ export default function KFCanteen() {
   const Navbar = () => (
     <>
       {/* ── Top Bar ── */}
-      <div style={{background:"#fff",borderBottom:"1px solid #E5E7EB",display:"flex",alignItems:"center",padding:"0 1rem",position:"sticky",top:0,zIndex:50,height:52,flexShrink:0}}>
-        {/* Hamburger */}
-        <button onClick={()=>setSidebarOpen(p=>!p)}
-          style={{background:"none",border:"none",cursor:"pointer",padding:"6px 8px",marginRight:10,borderRadius:8,display:"flex",flexDirection:"column",gap:4,flexShrink:0}}
-          aria-label="Toggle menu">
-          <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
-          <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
-          <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
-        </button>
+      <div style={{background:"#fff",borderBottom:"1px solid #E5E7EB",display:"flex",alignItems:"center",padding:"0 1rem",position:"sticky",top:0,zIndex:50,height:52,flexShrink:0,marginLeft:isDesktop?240:0,transition:"margin-left 0.25s"}}>
+        {/* Hamburger — mobile/tablet only, sidebar is persistent on desktop */}
+        {!isDesktop&&(
+          <button onClick={()=>setSidebarOpen(p=>!p)}
+            style={{background:"none",border:"none",cursor:"pointer",padding:"6px 8px",marginRight:10,borderRadius:8,display:"flex",flexDirection:"column",gap:4,flexShrink:0}}
+            aria-label="Toggle menu">
+            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
+            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
+            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
+          </button>
+        )}
 
         {/* Brand */}
         <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -1260,20 +1282,20 @@ export default function KFCanteen() {
         </div>
       </div>
 
-      {/* ── Sidebar overlay (mobile) ── */}
-      {sidebarOpen&&(
+      {/* ── Sidebar overlay (mobile/tablet only — desktop sidebar is persistent, no overlay needed) ── */}
+      {sidebarOpen&&!isDesktop&&(
         <div onClick={()=>setSidebarOpen(false)}
           style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:98,top:52}} />
       )}
 
-      {/* ── Sidebar ── */}
+      {/* ── Sidebar — persistent on desktop (≥1024px), off-canvas overlay below that ── */}
       <div style={{
         position:"fixed",top:52,left:0,bottom:0,width:240,
         background:"#fff",borderRight:"1px solid #E5E7EB",
-        zIndex:99,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",
+        zIndex:99,transform:(sidebarOpen||isDesktop)?"translateX(0)":"translateX(-100%)",
         transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",
         display:"flex",flexDirection:"column",overflowY:"auto",
-        boxShadow:sidebarOpen?"4px 0 20px rgba(0,0,0,0.08)":"none",
+        boxShadow:(sidebarOpen&&!isDesktop)?"4px 0 20px rgba(0,0,0,0.08)":"none",
       }}>
         {/* User info header */}
         <div style={{padding:"16px",borderBottom:"1px solid #F3F4F6",background:PURPLE_LIGHT}}>
@@ -1584,7 +1606,10 @@ export default function KFCanteen() {
           <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
             {cart.map(item=>(
               <div key={item._key} style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid #F3F4F6"}}>
-                <span style={{fontSize:28}}>{item.img||item.emoji}</span>
+                {item.isPhoto&&item.img
+                  ? <img src={item.img} alt={item.name} style={{width:40,height:40,borderRadius:8,objectFit:"cover",flexShrink:0}} />
+                  : <span style={{fontSize:28}}>{item.img||item.emoji}</span>
+                }
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:14,color:"#111"}}>
                     {item.name}
@@ -2586,7 +2611,7 @@ export default function KFCanteen() {
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
               <Icon name="receipt" size={20} color={PURPLE} /> Receipts
             </h2>
-            {role==="staff-admin"&&(
+            {(role==="admin"||role==="staff-admin")&&(
               <button onClick={()=>{setNewReceipt({date:toDateKey(new Date()),source:"Grocery",sourceName:"",purchaseType:"Grocery",note:""});setReceiptPhotos([]);setShowAddReceipt(true);}}
                 style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 <Icon name="plus" size={14} color="#fff" /> Add Receipts
@@ -2635,7 +2660,7 @@ export default function KFCanteen() {
           {sortedReceipts.length===0&&<Empty msg="No receipts yet" sub="Attach a photo of a purchase receipt to get started." />}
 
           {/* ADD RECEIPTS MODAL */}
-          {showAddReceipt&&role==="staff-admin"&&(
+          {showAddReceipt&&(role==="admin"||role==="staff-admin")&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
               <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:520,maxHeight:"90vh",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
                 <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
@@ -2999,6 +3024,17 @@ export default function KFCanteen() {
                     <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Company is informational only — it does not set the Plant. Plant (KF-Main, Colortree, KF-Global) is assigned by an admin afterwards in the Employees table. Rows with an Employee No. that already exists in the system are skipped automatically to avoid duplicates.</div>
                   </div>
 
+                  {/* Credit limit for imported employees */}
+                  <div style={{marginBottom:18}}>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Credit Limit for Imported Employees</label>
+                    <div style={{position:"relative",maxWidth:200}}>
+                      <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9CA3AF",fontWeight:600}}>₱</span>
+                      <input value={importCreditLimit} onChange={e=>setImportCreditLimit(e.target.value)} type="number" min="0" placeholder="500"
+                        style={{width:"100%",fontSize:14,padding:"9px 12px 9px 26px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    </div>
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Applied to every employee in this upload as both their credit limit and starting balance.</div>
+                  </div>
+
                   {/* Upload area */}
                   <div style={{marginBottom:16}}>
                     <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:8}}>Step 2: Upload your filled file</div>
@@ -3135,6 +3171,7 @@ export default function KFCanteen() {
                     var toImport = importPreview.filter(function(emp) {
                       return !users.some(function(u){ return (u.idNumber||"").trim()===emp.idNumber; });
                     });
+                    var creditLimit = parseFloat(importCreditLimit)||0;
                     var newUsers = toImport.map(function(emp) {
                       return {
                         id:"u"+Date.now()+Math.random(),
@@ -3148,8 +3185,8 @@ export default function KFCanteen() {
                         position:emp.position||"",
                         company:emp.company||"",
                         phone:"",
-                        creditLimit:500,
-                        creditBalance:500,
+                        creditLimit:creditLimit,
+                        creditBalance:creditLimit,
                         registered:false,
                         isEmployee:true,
                       };
@@ -3305,7 +3342,7 @@ export default function KFCanteen() {
               <button onClick={()=>setShowAddEmployeeModal(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 <Icon name="plus" size={14} color="#fff" /> Add Employee
               </button>
-              <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");setImportCreditLimit("500");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 📥 Import Excel
               </button>
             </div>
@@ -3388,29 +3425,90 @@ export default function KFCanteen() {
             </div>
           )}
 
+          {/* Bulk selection bar — Registered tab */}
+          {personnelSearch!=="unregistered"&&selectedRegisteredIds.length>0&&(
+            <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:PURPLE}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                <span><strong>{selectedRegisteredIds.length}</strong> employee{selectedRegisteredIds.length>1?"s":""} selected</span>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button onClick={()=>{setSelectedRegisteredIds([]);setShowBulkCreditInput(false);setBulkActionError("");}} style={{background:"#fff",color:"#6B7280",border:"1px solid #E5E7EB",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                    Clear
+                  </button>
+                  <button disabled={bulkActionSubmitting} onClick={()=>{setShowBulkCreditInput(p=>!p);setBulkCreditLimitVal("");setBulkActionError("");}}
+                    style={{background:"#fff",color:PURPLE,border:"1px solid "+PURPLE,borderRadius:7,padding:"6px 12px",cursor:bulkActionSubmitting?"not-allowed":"pointer",fontSize:12,fontWeight:600}}>
+                    Set Limit
+                  </button>
+                  <button disabled={bulkActionSubmitting} onClick={async ()=>{
+                    setBulkActionSubmitting(true);
+                    setBulkActionError("");
+                    const targets = users.filter(u=>selectedRegisteredIds.includes(u.id));
+                    const results = await Promise.all(targets.map(u=>dbUpdateUser(u.id,{creditBalance:u.creditLimit})));
+                    setBulkActionSubmitting(false);
+                    const failed = results.filter(r=>!r.success);
+                    if(failed.length){ setBulkActionError(failed.length+" of "+targets.length+" failed to update. Please try again."); return; }
+                    setUsers(prev=>prev.map(uu=>selectedRegisteredIds.includes(uu.id)?{...uu,creditBalance:uu.creditLimit}:uu));
+                    setSelectedRegisteredIds([]);
+                  }} style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:7,padding:"6px 12px",cursor:bulkActionSubmitting?"not-allowed":"pointer",fontSize:12,fontWeight:600}}>
+                    {bulkActionSubmitting?"Working...":"Reset Credit to Limit"}
+                  </button>
+                  <button disabled={bulkActionSubmitting} onClick={()=>{
+                    setResetTargets(users.filter(u=>selectedRegisteredIds.includes(u.id)));
+                    setResetStage("choose");setResetError("");setResetNewPassword("");setResetConfirmPassword("");
+                  }} style={{background:"#FEF3C7",color:"#92400E",border:"none",borderRadius:7,padding:"6px 12px",cursor:bulkActionSubmitting?"not-allowed":"pointer",fontSize:12,fontWeight:600}}>
+                    Reset Account
+                  </button>
+                </div>
+              </div>
+              {showBulkCreditInput&&(
+                <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10,paddingTop:10,borderTop:"1px solid rgba(107,33,168,0.15)"}}>
+                  <span style={{fontSize:12,fontWeight:600}}>New credit limit for all selected:</span>
+                  <input value={bulkCreditLimitVal} onChange={e=>setBulkCreditLimitVal(e.target.value)} type="number" min="0" placeholder="e.g. 1000"
+                    style={{width:100,fontSize:13,padding:"5px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
+                  <button disabled={bulkActionSubmitting||!bulkCreditLimitVal} onClick={async ()=>{
+                    const newLimit = parseFloat(bulkCreditLimitVal);
+                    if(!(newLimit>=0)) { setBulkActionError("Enter a valid credit limit."); return; }
+                    setBulkActionSubmitting(true);
+                    setBulkActionError("");
+                    const results = await Promise.all(selectedRegisteredIds.map(id=>dbUpdateUser(id,{creditLimit:newLimit})));
+                    setBulkActionSubmitting(false);
+                    const failed = results.filter(r=>!r.success);
+                    if(failed.length){ setBulkActionError(failed.length+" of "+selectedRegisteredIds.length+" failed to update. Please try again."); return; }
+                    setUsers(prev=>prev.map(uu=>selectedRegisteredIds.includes(uu.id)?{...uu,creditLimit:newLimit}:uu));
+                    setSelectedRegisteredIds([]);
+                    setShowBulkCreditInput(false);
+                  }} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",cursor:(bulkActionSubmitting||!bulkCreditLimitVal)?"not-allowed":"pointer",fontSize:12,fontWeight:600}}>
+                    {bulkActionSubmitting?"Saving...":"Apply"}
+                  </button>
+                </div>
+              )}
+              {bulkActionError&&(
+                <div style={{marginTop:10,background:"#FEE2E2",borderRadius:7,padding:"8px 12px",fontSize:12,color:"#991B1B"}}>⚠️ {bulkActionError}</div>
+              )}
+            </div>
+          )}
+
           <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
-                  {personnelSearch==="unregistered"&&(
-                    <th style={{padding:"11px 14px",width:36}}>
-                      <input type="checkbox"
-                        checked={filteredUsers.length>0&&filteredUsers.every(u=>selectedUnregisteredIds.includes(u.id))}
-                        onChange={e=>{
-                          if(e.target.checked) setSelectedUnregisteredIds(prev=>Array.from(new Set([...prev,...filteredUsers.map(u=>u.id)])));
-                          else setSelectedUnregisteredIds(prev=>prev.filter(id=>!filteredUsers.some(u=>u.id===id)));
-                        }}
-                        style={{width:15,height:15,cursor:"pointer"}} />
-                    </th>
-                  )}
+                  <th style={{padding:"11px 14px",width:36}}>
+                    <input type="checkbox"
+                      checked={filteredUsers.length>0&&filteredUsers.every(u=>(personnelSearch==="unregistered"?selectedUnregisteredIds:selectedRegisteredIds).includes(u.id))}
+                      onChange={e=>{
+                        const setSel = personnelSearch==="unregistered" ? setSelectedUnregisteredIds : setSelectedRegisteredIds;
+                        if(e.target.checked) setSel(prev=>Array.from(new Set([...prev,...filteredUsers.map(u=>u.id)])));
+                        else setSel(prev=>prev.filter(id=>!filteredUsers.some(u=>u.id===id)));
+                      }}
+                      style={{width:15,height:15,cursor:"pointer"}} />
+                  </th>
                   {personnelSearch==="unregistered"
                     ? ["ID No.","Name","Department","Company","Plant","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
-                    : ["ID No.","Name","Department","Company","Plant","Phone","Username","Role","Credit Limit","Balance","Actions"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
+                    : ["ID No.","Name","Role","Credit Limit","Balance","Actions","Company","Plant","Department","Phone","Username"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
                   }
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length===0&&<tr><td colSpan={personnelSearch==="unregistered"?8:11} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
+                {filteredUsers.length===0&&<tr><td colSpan={personnelSearch==="unregistered"?8:12} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
                 {personnelSearch==="unregistered" ? filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                     <td style={{padding:"12px 14px"}}>
@@ -3454,13 +3552,21 @@ export default function KFCanteen() {
                     </td>
                     <td style={{padding:"12px 14px"}}><span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>Pending Registration</span></td>
                     <td style={{padding:"12px 14px"}}>
-                      <button onClick={()=>{setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
+                      <button onClick={()=>{if(!window.confirm(`Remove ${u.name} from the employee list?`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
                         <Icon name="trash" size={13} color="#991B1B" /> Remove
                       </button>
                     </td>
                   </tr>
                 )) : filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
+                    <td style={{padding:"12px 14px"}}>
+                      <input type="checkbox" checked={selectedRegisteredIds.includes(u.id)}
+                        onChange={e=>{
+                          if(e.target.checked) setSelectedRegisteredIds(prev=>[...prev,u.id]);
+                          else setSelectedRegisteredIds(prev=>prev.filter(id=>id!==u.id));
+                        }}
+                        style={{width:15,height:15,cursor:"pointer"}} />
+                    </td>
                     <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{u.idNumber||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -3471,29 +3577,6 @@ export default function KFCanteen() {
                         </div>
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
-                      {editPlantId===u.id ? (
-                        <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                          <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
-                            style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
-                            <option value="">Unassigned</option>
-                            {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
-                          </select>
-                          <button onClick={()=>setEditPlantId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
-                        </div>
-                      ) : (
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{background:u.plant?PURPLE_LIGHT:"#F3F4F6",color:u.plant?PURPLE:"#9CA3AF",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"Unassigned"}</span>
-                          <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
-                            <Icon name="edit" size={12} color="#9CA3AF" />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
                       {editRoleId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
@@ -3522,7 +3605,7 @@ export default function KFCanteen() {
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
                             style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
-                          <button onClick={()=>{const newLimit=parseFloat(editCreditVal)||u.creditLimit;setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:newLimit}:uu));dbUpdateUser(u.id,{creditLimit:newLimit});setEditCreditId(null);}}
+                          <button onClick={()=>{const parsed=parseFloat(editCreditVal);const newLimit=(!isNaN(parsed)&&parsed>=0)?parsed:u.creditLimit;setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:newLimit}:uu));dbUpdateUser(u.id,{creditLimit:newLimit});setEditCreditId(null);}}
                             style={{background:PURPLE,color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>Save</button>
                           <button onClick={()=>setEditCreditId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>✕</button>
                         </div>
@@ -3546,12 +3629,35 @@ export default function KFCanteen() {
                           style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Reset
                         </button>
-                        <button onClick={()=>{setResetTarget(u);setResetStage("choose");setResetError("");setResetNewPassword("");setResetConfirmPassword("");}}
+                        <button onClick={()=>{setResetTargets([u]);setResetStage("choose");setResetError("");setResetNewPassword("");setResetConfirmPassword("");}}
                           style={{background:"#FEF3C7",color:"#92400E",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Reset Account
                         </button>
                       </div>
                     </td>
+                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
+                    <td style={{padding:"12px 14px"}}>
+                      {editPlantId===u.id ? (
+                        <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                          <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
+                            style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
+                            <option value="">Unassigned</option>
+                            {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
+                          </select>
+                          <button onClick={()=>setEditPlantId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{background:u.plant?PURPLE_LIGHT:"#F3F4F6",color:u.plant?PURPLE:"#9CA3AF",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"Unassigned"}</span>
+                          <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
+                            <Icon name="edit" size={12} color="#9CA3AF" />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
+                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
+                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3561,16 +3667,19 @@ export default function KFCanteen() {
             💡 Credit balances auto-reset to each user's limit on the <strong>15th</strong> and <strong>last day</strong> of every month.
           </div>
 
-          {/* Reset Account modal */}
-          {resetTarget&&(
+          {/* Reset Account modal — resetTargets is an array so this covers both the single-row
+              "Reset Account" button and the bulk action from the selection bar above */}
+          {resetTargets.length>0&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
               <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
                 <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Reset Account</div>
-                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>{resetTarget.name}</div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Reset Account{resetTargets.length>1?"s":""}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>
+                      {resetTargets.length===1 ? resetTargets[0].name : resetTargets.length+" employees selected"}
+                    </div>
                   </div>
-                  <button disabled={resetSubmitting} onClick={()=>setResetTarget(null)}
+                  <button disabled={resetSubmitting} onClick={()=>setResetTargets([])}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:resetSubmitting?"not-allowed":"pointer",color:"#fff",fontSize:18}}>×</button>
                 </div>
 
@@ -3586,7 +3695,7 @@ export default function KFCanteen() {
                       <button onClick={()=>setResetStage("set-password")}
                         style={{textAlign:"left",background:PURPLE_LIGHT,border:"1.5px solid "+PURPLE,borderRadius:10,padding:"14px 16px",cursor:"pointer"}}>
                         <div style={{fontWeight:700,fontSize:14,color:PURPLE}}>🔑 Reset Password Only</div>
-                        <div style={{fontSize:12,color:PURPLE,marginTop:4,lineHeight:1.4}}>Keeps them registered with all their details — just sets a new password.</div>
+                        <div style={{fontSize:12,color:PURPLE,marginTop:4,lineHeight:1.4}}>Keeps them registered with all their details — just sets a new password{resetTargets.length>1?" (the same one for everyone selected)":""}.</div>
                       </button>
                     </div>
                   </div>
@@ -3595,7 +3704,7 @@ export default function KFCanteen() {
                 {resetStage==="confirm-details"&&(
                   <div style={{padding:"22px"}}>
                     <div style={{fontSize:14,color:"#374151",marginBottom:16,lineHeight:1.5}}>
-                      This will clear <strong>{resetTarget.name}</strong>'s username, password, phone, email, and plant assignment, and move them back to <strong>Unregistered</strong>. Their order history and credit balance will <strong>not</strong> be affected.
+                      This will clear {resetTargets.length===1 ? <><strong>{resetTargets[0].name}</strong>'s</> : <><strong>{resetTargets.length}</strong> employees'</>} username, password, phone, email, and plant assignment, and move them back to <strong>Unregistered</strong>. Their order history and credit balance will <strong>not</strong> be affected.
                     </div>
                     {resetError&&(
                       <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#991B1B"}}>
@@ -3611,14 +3720,17 @@ export default function KFCanteen() {
                         setResetSubmitting(true);
                         setResetError("");
                         const patch = { username:null, password:"", phone:"", email:"", plant:"", registered:false };
-                        const result = await dbUpdateUser(resetTarget.id, patch);
+                        const ids = resetTargets.map(t=>t.id);
+                        const results = await Promise.all(ids.map(id=>dbUpdateUser(id, patch)));
                         setResetSubmitting(false);
-                        if(!result.success){
-                          setResetError("Could not reset — "+(result.error&&result.error.message?result.error.message:"unknown error")+". Please try again.");
+                        const failed = results.filter(r=>!r.success);
+                        if(failed.length){
+                          setResetError((failed.length)+" of "+ids.length+" failed — "+(failed[0].error&&failed[0].error.message?failed[0].error.message:"unknown error")+". Please try again.");
                           return;
                         }
-                        setUsers(prev=>prev.map(uu=>uu.id===resetTarget.id?{...uu,...patch}:uu));
-                        setResetTarget(null);
+                        setUsers(prev=>prev.map(uu=>ids.includes(uu.id)?{...uu,...patch}:uu));
+                        setSelectedRegisteredIds([]);
+                        setResetTargets([]);
                       }} style={{flex:1,background:"#EF4444",color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:resetSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
                         {resetSubmitting?"Resetting...":"Yes, Reset Details"}
                       </button>
@@ -3628,6 +3740,11 @@ export default function KFCanteen() {
 
                 {resetStage==="set-password"&&(
                   <div style={{padding:"22px"}}>
+                    {resetTargets.length>1&&(
+                      <div style={{background:"#FEF3C7",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400E"}}>
+                        ⚠️ This sets the same password for all {resetTargets.length} selected employees.
+                      </div>
+                    )}
                     <div style={{marginBottom:12}}>
                       <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>New Password</label>
                       <input type="text" value={resetNewPassword} onChange={e=>setResetNewPassword(e.target.value)} placeholder="Enter new password"
@@ -3653,14 +3770,17 @@ export default function KFCanteen() {
                         if(resetNewPassword!==resetConfirmPassword){ setResetError("Passwords do not match."); return; }
                         setResetSubmitting(true);
                         setResetError("");
-                        const result = await dbUpdateUser(resetTarget.id, {password:resetNewPassword});
+                        const ids = resetTargets.map(t=>t.id);
+                        const results = await Promise.all(ids.map(id=>dbUpdateUser(id, {password:resetNewPassword})));
                         setResetSubmitting(false);
-                        if(!result.success){
-                          setResetError("Could not save — "+(result.error&&result.error.message?result.error.message:"unknown error")+". Please try again.");
+                        const failed = results.filter(r=>!r.success);
+                        if(failed.length){
+                          setResetError((failed.length)+" of "+ids.length+" failed — "+(failed[0].error&&failed[0].error.message?failed[0].error.message:"unknown error")+". Please try again.");
                           return;
                         }
-                        setUsers(prev=>prev.map(uu=>uu.id===resetTarget.id?{...uu,password:resetNewPassword}:uu));
-                        setResetTarget(null);
+                        setUsers(prev=>prev.map(uu=>ids.includes(uu.id)?{...uu,password:resetNewPassword}:uu));
+                        setSelectedRegisteredIds([]);
+                        setResetTargets([]);
                       }} style={{flex:1,background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"12px",cursor:resetSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
                         {resetSubmitting?"Saving...":"Save New Password"}
                       </button>
@@ -3711,7 +3831,7 @@ export default function KFCanteen() {
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
                             style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
-                          <button onClick={()=>{const newLimit=parseFloat(editCreditVal)||u.creditLimit;setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:newLimit}:uu));dbUpdateUser(u.id,{creditLimit:newLimit});setEditCreditId(null);}}
+                          <button onClick={()=>{const parsed=parseFloat(editCreditVal);const newLimit=(!isNaN(parsed)&&parsed>=0)?parsed:u.creditLimit;setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditLimit:newLimit}:uu));dbUpdateUser(u.id,{creditLimit:newLimit});setEditCreditId(null);}}
                             style={{background:PURPLE,color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>Save</button>
                           <button onClick={()=>setEditCreditId(null)} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>✕</button>
                         </div>
@@ -3734,7 +3854,7 @@ export default function KFCanteen() {
                           style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           Reset
                         </button>
-                        <button onClick={()=>{setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);}}
+                        <button onClick={()=>{if(!window.confirm(`Remove ${u.name}'s account? This cannot be undone.`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);}}
                           style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                           <Icon name="trash" size={12} color="#991B1B" /> Remove
                         </button>
@@ -3796,10 +3916,12 @@ export default function KFCanteen() {
                   (o.plant||"").toLowerCase().includes(hs)
                 )
               : allDayOrders;
-            const cashOrders   = dayOrders.filter(o=>o.paymentType==="Cash");
-            const creditOrders = dayOrders.filter(o=>o.paymentType==="Credit");
+            const cashOrders    = dayOrders.filter(o=>o.paymentType==="Cash");
+            const creditOrders  = dayOrders.filter(o=>o.paymentType==="Credit");
+            const pendingOrders = dayOrders.filter(o=>!o.paymentType);
             const cashTotal    = cashOrders.reduce((s,o)=>s+o.total,0);
             const creditTotal  = creditOrders.reduce((s,o)=>s+o.total,0);
+            const pendingTotal = pendingOrders.reduce((s,o)=>s+o.total,0);
             const dayTotal     = dayOrders.reduce((s,o)=>s+o.total,0);
             const firstDay = new Date(scYear,scMonth,1).getDay();
             const daysInMonth = new Date(scYear,scMonth+1,0).getDate();
@@ -3908,10 +4030,10 @@ export default function KFCanteen() {
                 {/* daily sales summary cards */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12,marginBottom:16}}>
                   {[
-                    {label:"Total Sales",    value:"₱"+dayTotal,   color:PURPLE,    sub:dayOrders.length+" orders"},
+                    {label:"Total Collected", value:"₱"+(cashTotal+creditTotal),   color:PURPLE,    sub:(cashOrders.length+creditOrders.length)+" paid orders"},
                     {label:"💵 Cash Sales",   value:"₱"+cashTotal,  color:"#059669", sub:cashOrders.length+" orders"},
                     {label:"💳 Credit Sales", value:"₱"+creditTotal,color:"#0891B2", sub:creditOrders.length+" orders"},
-                    {label:"Unpaid",          value:dayOrders.filter(o=>!o.paymentType).length, color:"#F59E0B", sub:"orders"},
+                    {label:"Unpaid (Pending)", value:"₱"+pendingTotal, color:"#F59E0B", sub:pendingOrders.length+" orders"},
                   ].map(s=>(
                     <div key={s.label} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"1rem",textAlign:"center"}}>
                       <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.value}</div>
@@ -3975,11 +4097,11 @@ export default function KFCanteen() {
                       <tfoot>
                         <tr style={{background:"#F9FAFB",borderTop:"2px solid #E5E7EB"}}>
                           <td colSpan={4} style={{padding:"11px 14px",fontWeight:700,color:"#374151",fontSize:13}}>
-                            {hs ? "Filtered Total" : "Daily Total"}
+                            {hs ? "Filtered Total (incl. unpaid)" : "Daily Total (incl. unpaid)"}
                           </td>
                           <td style={{padding:"11px 14px",fontWeight:800,color:PURPLE,fontSize:15}}>₱{dayTotal}</td>
                           <td colSpan={2} style={{padding:"11px 14px",fontSize:12,color:"#6B7280"}}>
-                            💵 Cash: ₱{cashTotal} &nbsp;|&nbsp; 💳 Credit: ₱{creditTotal}
+                            💵 Cash: ₱{cashTotal} &nbsp;|&nbsp; 💳 Credit: ₱{creditTotal} &nbsp;|&nbsp; ⏳ Pending: ₱{pendingTotal}
                           </td>
                         </tr>
                       </tfoot>
@@ -4094,7 +4216,7 @@ export default function KFCanteen() {
       <Navbar />
       {/* low credit warning banner */}
       {creditNotif&&currentUser.creditBalance<100&&(
-        <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"10px 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,position:"sticky",top:52,zIndex:40}}>
+        <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"10px 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,position:"sticky",top:52,zIndex:40,marginLeft:isDesktop?240:0,transition:"margin-left 0.25s"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:18}}>⚠️</span>
             <div>
@@ -4106,7 +4228,7 @@ export default function KFCanteen() {
         </div>
       )}
       {/* Main content */}
-      <div style={{padding:"1.25rem",maxWidth:1100,margin:"0 auto",transition:"margin-left 0.25s"}}>
+      <div style={{padding:"1.25rem",maxWidth:1100,margin:"0 auto",marginLeft:isDesktop?240:undefined,transition:"margin-left 0.25s"}}>
         {renderTab()}
       </div>
       {/* Add/Edit Dish modal — lives at the top level (not inside the Manage Dishes tab) so it can also
@@ -4266,7 +4388,7 @@ export default function KFCanteen() {
           <Icon name="check" size={16} color="#fff" /> Order placed successfully!
         </div>
       )}
-      <Footer />
+      <Footer offsetLeft={isDesktop?240:0} />
     </div>
   );
 }
