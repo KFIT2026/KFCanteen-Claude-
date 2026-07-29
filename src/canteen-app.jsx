@@ -355,10 +355,17 @@ export default function KFCanteen() {
   const cartTotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const role = currentUser?.role;
 
-  const orderCounter = useRef(22); // starts at 22 since defaults are KF000001-22
+  // derived from currently-loaded orders (not a hardcoded/session-local counter) so IDs
+  // stay unique across page reloads and separate browser sessions — a fixed starting ref
+  // here previously caused every fresh session's first order to collide with any other
+  // session's first order (both becoming "KF000023"), silently failing to save.
   const nextOrderId = () => {
-    orderCounter.current += 1;
-    return "KF" + String(orderCounter.current).padStart(6, "0");
+    const nums = orders
+      .map(o=>/^KF(\d+)$/.exec(o.id))
+      .filter(Boolean)
+      .map(m=>parseInt(m[1],10));
+    const next = (nums.length?Math.max(...nums):22) + 1;
+    return "KF" + String(next).padStart(6, "0");
   };
   const handleLogin = () => {
     const found = users.find(u=>u.username===loginForm.username && u.password===loginForm.password && u.registered);
