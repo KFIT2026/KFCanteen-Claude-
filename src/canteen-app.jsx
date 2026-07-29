@@ -128,6 +128,7 @@ const Icon = ({ name, size=16, color="currentColor" }) => {
     expense: <><path d="M20 7H4a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 7V5a2 2 0 00-2-2H8a2 2 0 00-2 2v2"/><circle cx="16" cy="13.5" r="1.5"/></>,
     scale: <><path d="M12 3v18"/><path d="M5 7l-3 7a4 4 0 008 0z"/><path d="M19 7l-3 7a4 4 0 008 0z"/><path d="M3 7h18"/><path d="M9 3h6"/></>,
     idea: <><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.5.4.8 1 .8 1.7v.6h6.4v-.6c0-.7.3-1.3.8-1.7A7 7 0 0012 2z"/></>,
+    register: <><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v3"/><line x1="2" y1="13" x2="22" y2="13"/><line x1="8" y1="17" x2="10" y2="17"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"middle",flexShrink:0}}>
@@ -167,6 +168,7 @@ const NAV = {
   staff: [
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
+    { id:"otc",       label:"Over the Counter",icon:"register" },
     { id:"suggestions",label:"Suggestions",    icon:"idea" },
   ],
   user: [
@@ -253,6 +255,14 @@ export default function KFCanteen() {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [showPlantModal, setShowPlantModal] = useState(false);
   const [orderPlant, setOrderPlant] = useState("");
+
+  // over the counter (staff-encoded walk-up sale)
+  const [otcType, setOtcType] = useState(null); // "employee" | "visitor" | "guard"
+  const [otcSearch, setOtcSearch] = useState("");
+  const [otcCustomer, setOtcCustomer] = useState(null); // employee user object OR {name} for guest
+  const [otcCart, setOtcCart] = useState([]);
+  const [otcPaymentModal, setOtcPaymentModal] = useState(false);
+  const [otcDone, setOtcDone] = useState(false);
 
   // manage menu add form
   const [showAddItem, setShowAddItem] = useState(null);
@@ -678,51 +688,34 @@ export default function KFCanteen() {
   const updateQty = (key,delta) => setCart(prev=>prev.map(c=>c._key===key?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
   const removeFromCart = (key) => setCart(prev=>prev.filter(c=>c._key!==key));
 
-  const placeOrder = () => {
-    if(!cart.length) return;
-    const plant = orderPlant || currentUser.plant || "KF-Main";
-    // orders with no scheduled (advance) date are for "today" — if this plant
-    // already closed today, roll them onto tomorrow instead of blocking the order.
-    // advance orders (scheduledDate already set) are left untouched.
-    const allAdvance = cart.every(c=>c.scheduledDate);
-    const plantClosedToday = !allAdvance && isPlantClosed(plant);
-    const orderDate = plantClosedToday
-      ? toDateKey(new Date(Date.now()+86400000))
-      : toDateKey(new Date());
-    const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
-      date: orderDate,
-      plant: plant,
-      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
-    setOrders(prev=>[order,...prev]);
-    dbInsertOrder(order);
-    setOtherProducts(prev => {
-      const updated = prev.map(p => {
-        const cartItem = cart.find(c => c.id === p.id);
-        if (!cartItem) return p;
-        const newStock = Math.max(0, p.stock - cartItem.qty);
-        const logEntry = {
-          id:"il"+Date.now()+p.id, product:p.name, emoji:p.emoji,
-          type:"OUT", qty:cartItem.qty, before:p.stock, after:newStock,
-          by:currentUser.name,
-          time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
-        };
-        setInventoryLog(log=>[logEntry,...log]);
-        dbInsertLog(logEntry);
-        dbUpdateProduct(p.id, { stock:newStock, available: newStock>0 });
-        return { ...p, stock: newStock, available: newStock > 0 };
-      });
-      return updated;
-    });
-    // deduct raw materials for any cart item linked to a dish recipe
-    cart.forEach(cartItem => {
-      if(!cartItem.dishId) return;
-      const dish = dishes.find(d=>d.id===cartItem.dishId);
+  // shared by self-service checkout and the staff-run Over the Counter
+  // sale — deducts Other Products stock and, for any item linked to a
+  // dish recipe, the raw materials behind it (excess/repurposed stock
+  // first, then purchased stock).
+  const deductInventoryForItems = (items) => {
+    setOtherProducts(prev => prev.map(p => {
+      const item = items.find(c => c.id === p.id);
+      if (!item) return p;
+      const newStock = Math.max(0, p.stock - item.qty);
+      const logEntry = {
+        id:"il"+Date.now()+p.id, product:p.name, emoji:p.emoji,
+        type:"OUT", qty:item.qty, before:p.stock, after:newStock,
+        by:currentUser.name,
+        time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+      };
+      setInventoryLog(log=>[logEntry,...log]);
+      dbInsertLog(logEntry);
+      dbUpdateProduct(p.id, { stock:newStock, available: newStock>0 });
+      return { ...p, stock: newStock, available: newStock > 0 };
+    }));
+    items.forEach(item => {
+      if(!item.dishId) return;
+      const dish = dishes.find(d=>d.id===item.dishId);
       if(!dish||!dish.ingredients) return;
       dish.ingredients.forEach(ing => {
         setRawMaterials(prev => prev.map(m => {
           if(m.id!==ing.rawMaterialId) return m;
-          const usedQty = ing.quantity * cartItem.qty;
-          // use up excess (repurposed leftovers) before touching purchased stock
+          const usedQty = ing.quantity * item.qty;
           const excessBefore = m.excessStock||0;
           const fromExcess = Math.min(excessBefore, usedQty);
           const fromStock = usedQty - fromExcess;
@@ -741,12 +734,74 @@ export default function KFCanteen() {
         }));
       });
     });
+  };
+
+  const placeOrder = () => {
+    if(!cart.length) return;
+    const plant = orderPlant || currentUser.plant || "KF-Main";
+    // orders with no scheduled (advance) date are for "today" — if this plant
+    // already closed today, roll them onto tomorrow instead of blocking the order.
+    // advance orders (scheduledDate already set) are left untouched.
+    const allAdvance = cart.every(c=>c.scheduledDate);
+    const plantClosedToday = !allAdvance && isPlantClosed(plant);
+    const orderDate = plantClosedToday
+      ? toDateKey(new Date(Date.now()+86400000))
+      : toDateKey(new Date());
+    const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
+      date: orderDate,
+      plant: plant,
+      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
+    setOrders(prev=>[order,...prev]);
+    dbInsertOrder(order);
+    deductInventoryForItems(cart);
     setCart([]);
     setOrderPlant("");
     setShowPlantModal(false);
     setOrderPlaced(true);
     setTimeout(()=>setOrderPlaced(false),3000);
     setActiveTab("myorders");
+  };
+
+  /* ── OVER THE COUNTER (staff-encoded walk-up sale) ── */
+  const resetOtc = () => { setOtcType(null); setOtcSearch(""); setOtcCustomer(null); setOtcCart([]); setOtcPaymentModal(false); };
+  const otcAddItem = (item) => setOtcCart(prev=>{
+    const ex = prev.find(c=>c.id===item.id);
+    if(ex) return prev.map(c=>c.id===item.id?{...c,qty:c.qty+1}:c);
+    return [...prev, {...item, qty:1}];
+  });
+  const otcUpdateQty = (id,delta) => setOtcCart(prev=>prev.map(c=>c.id===id?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
+  const otcCartTotal = otcCart.reduce((s,i)=>s+i.price*i.qty,0);
+
+  const completeOtcSale = (paymentType) => {
+    if(!otcCart.length||!otcCustomer) return;
+    const plant = currentUser.plant||"KF-Main";
+    const isEmployee = otcType==="employee";
+    const order = {
+      id: nextOrderId(),
+      user: otcCustomer.name,
+      userId: isEmployee ? otcCustomer.id : null,
+      date: toDateKey(new Date()),
+      plant,
+      items: otcCart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:null})),
+      total: otcCartTotal,
+      time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+      paymentType,
+      source: "otc",
+      encodedBy: currentUser.name,
+      guestType: isEmployee ? null : otcType,
+    };
+    setOrders(prev=>[order,...prev]);
+    dbInsertOrder(order);
+    deductInventoryForItems(otcCart);
+    if(paymentType==="Credit" && isEmployee){
+      const newBal = Math.max(0,(otcCustomer.creditBalance||0)-otcCartTotal);
+      setUsers(prev=>prev.map(u=>u.id===otcCustomer.id?{...u,creditBalance:newBal}:u));
+      dbUpdateUser(otcCustomer.id, { creditBalance:newBal });
+    }
+    setOtcCart([]);
+    setOtcPaymentModal(false);
+    setOtcDone(true);
+    setTimeout(()=>setOtcDone(false),3000);
   };
 
   /* ── MENU MGMT ── */
@@ -1834,7 +1889,10 @@ export default function KFCanteen() {
               <div key={order.id} style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"16px 18px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div>
-                    <div style={{fontWeight:700,fontSize:14,color:"#111"}}>Order #{order.id}</div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#111",display:"flex",alignItems:"center",gap:6}}>
+                      Order #{order.id}
+                      {order.source==="otc"&&<span style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 8px",borderRadius:10}}>🧾 Over the Counter</span>}
+                    </div>
                     <div style={{fontSize:12,color:"#9CA3AF"}}>{order.date} · {order.time}</div>
                   </div>
                   {order.paymentType&&<span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>{order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}</span>}
@@ -2452,7 +2510,10 @@ export default function KFCanteen() {
                   }).map(order=>(
                     <tr key={order.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                       <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
-                      <td style={{padding:"11px 14px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>{order.user}</td>
+                      <td style={{padding:"11px 14px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>
+                        {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
+                        {order.source==="otc"&&<div style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🧾 OTC</div>}
+                      </td>
                       <td style={{padding:"11px 14px"}}>
                         {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
                       </td>
@@ -4504,7 +4565,10 @@ export default function KFCanteen() {
                         {dayOrders.map(order=>(
                           <tr key={order.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                             <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11}}>{order.id}</td>
-                            <td style={{padding:"11px 14px",fontWeight:600,color:"#111"}}>{order.user}</td>
+                            <td style={{padding:"11px 14px",fontWeight:600,color:"#111"}}>
+                              {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
+                              {order.source==="otc"&&<div style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🧾 OTC</div>}
+                            </td>
                             <td style={{padding:"11px 14px"}}>
                               {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
                             </td>
@@ -4625,6 +4689,181 @@ export default function KFCanteen() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ── OVER THE COUNTER ── */
+    if(activeTab==="otc") {
+      const todaysWeekKey = getWeekKey(TODAY_DATE);
+      const todaysDay = getDateKey(TODAY_DATE);
+      const todaysMenuItems = ((menu[todaysWeekKey]&&menu[todaysWeekKey][todaysDay])||[]).filter(i=>i.available);
+      const availableProducts = otherProducts.filter(p=>p.available&&p.stock>0);
+      const employeeMatches = (otcType==="employee"&&otcSearch.trim())
+        ? users.filter(u=>u.isEmployee&&(((u.idNumber||"").toLowerCase().includes(otcSearch.toLowerCase()))||u.name.toLowerCase().includes(otcSearch.toLowerCase()))).slice(0,8)
+        : [];
+      const otcInsufficient = otcType==="employee"&&otcCustomer&&(otcCustomer.creditBalance||0)<otcCartTotal;
+
+      return (
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
+              <Icon name="register" size={20} color={PURPLE} /> Over the Counter
+            </h2>
+            {(otcType||otcCustomer)&&<button onClick={resetOtc} style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600}}>↺ Start Over</button>}
+          </div>
+
+          {otcDone&&<div style={{background:"#D1FAE5",color:"#065F46",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,fontWeight:600}}>✅ Sale completed and logged.</div>}
+
+          {/* step 1: who's this for */}
+          {!otcType&&(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,maxWidth:560}}>
+              {[{id:"employee",label:"Employee",sub:"Cash or Credit"},{id:"visitor",label:"Visitor",sub:"Cash only"},{id:"guard",label:"Guard",sub:"Cash only"}].map(t=>(
+                <button key={t.id} onClick={()=>setOtcType(t.id)}
+                  style={{background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:14,padding:"22px 16px",cursor:"pointer",textAlign:"center"}}>
+                  <div style={{fontSize:15,fontWeight:700,color:"#111"}}>{t.label}</div>
+                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>{t.sub}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* step 2: identify the customer */}
+          {otcType&&!otcCustomer&&(
+            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"20px",maxWidth:420}}>
+              {otcType==="employee" ? (
+                <>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Search by ID Number or Name</label>
+                  <input value={otcSearch} onChange={e=>setOtcSearch(e.target.value)} placeholder="e.g. KF2400101" autoFocus
+                    style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",boxSizing:"border-box",outline:"none",marginBottom:10}} />
+                  {employeeMatches.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {employeeMatches.map(u=>(
+                        <button key={u.id} onClick={()=>setOtcCustomer(u)}
+                          style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",border:"1px solid #E5E7EB",borderRadius:9,background:"#F9FAFB",cursor:"pointer",textAlign:"left"}}>
+                          <div style={{width:32,height:32,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>{u.avatar}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{u.name}</div>
+                            <div style={{fontSize:11,color:"#9CA3AF"}}>{u.idNumber||"—"} · 💳 ₱{(u.creditBalance||0).toLocaleString()} available</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {otcSearch.trim()&&employeeMatches.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No employee matches "{otcSearch}".</div>}
+                </>
+              ) : (
+                <>
+                  <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>{otcType==="guard"?"Guard's Name":"Visitor's Name"}</label>
+                  <input value={otcSearch} onChange={e=>setOtcSearch(e.target.value)} placeholder="Full name" autoFocus
+                    onKeyDown={e=>{if(e.key==="Enter"&&otcSearch.trim()) setOtcCustomer({name:toProperCase(otcSearch.trim())});}}
+                    style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",boxSizing:"border-box",outline:"none",marginBottom:10}} />
+                  <button onClick={()=>otcSearch.trim()&&setOtcCustomer({name:toProperCase(otcSearch.trim())})} disabled={!otcSearch.trim()}
+                    style={{width:"100%",background:otcSearch.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"10px",cursor:otcSearch.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700}}>
+                    Continue
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* step 3: items + cart */}
+          {otcCustomer&&(
+            <div>
+              <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:PURPLE,fontWeight:600}}>
+                Serving: {otcCustomer.name} {otcType!=="employee"&&`(${otcType==="guard"?"Guard":"Visitor"})`}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,alignItems:"start"}}>
+                <div>
+                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Today's Menu</h3>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:18}}>
+                    {todaysMenuItems.map(item=>(
+                      <button key={item.id} onClick={()=>otcAddItem(item)}
+                        style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px",cursor:"pointer",textAlign:"left"}}>
+                        <div style={{fontWeight:600,fontSize:12,color:"#111"}}>{item.name}</div>
+                        <div style={{fontSize:12,color:PURPLE,fontWeight:700,marginTop:4}}>₱{item.price}</div>
+                      </button>
+                    ))}
+                    {todaysMenuItems.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No menu items scheduled for today.</div>}
+                  </div>
+                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Other Products</h3>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
+                    {availableProducts.map(p=>(
+                      <button key={p.id} onClick={()=>otcAddItem(p)}
+                        style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px",cursor:"pointer",textAlign:"left"}}>
+                        <div style={{fontWeight:600,fontSize:12,color:"#111"}}>{p.name}</div>
+                        <div style={{fontSize:12,color:PURPLE,fontWeight:700,marginTop:4}}>₱{p.price}</div>
+                      </button>
+                    ))}
+                    {availableProducts.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No products in stock.</div>}
+                  </div>
+                </div>
+
+                <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"16px",position:"sticky",top:70}}>
+                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 10px"}}>Sale</h3>
+                  {otcCart.length===0 ? (
+                    <div style={{fontSize:12,color:"#9CA3AF"}}>No items added yet.</div>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                      {otcCart.map(item=>(
+                        <div key={item.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:600,color:"#111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
+                            <div style={{fontSize:11,color:"#9CA3AF"}}>₱{item.price} × {item.qty}</div>
+                          </div>
+                          <button onClick={()=>otcUpdateQty(item.id,-1)} style={{width:22,height:22,borderRadius:6,border:"1px solid #E5E7EB",background:BG,cursor:"pointer",fontSize:13,fontWeight:700}}>−</button>
+                          <span style={{fontSize:12,fontWeight:700,minWidth:16,textAlign:"center"}}>{item.qty}</span>
+                          <button onClick={()=>otcUpdateQty(item.id,1)} style={{width:22,height:22,borderRadius:6,border:"1px solid #E5E7EB",background:BG,cursor:"pointer",fontSize:13,fontWeight:700}}>+</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{borderTop:"1px solid #F3F4F6",paddingTop:10,display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:16,color:PURPLE,marginBottom:12}}>
+                    <span>Total</span><span>₱{otcCartTotal}</span>
+                  </div>
+                  <button onClick={()=>setOtcPaymentModal(true)} disabled={!otcCart.length}
+                    style={{width:"100%",background:otcCart.length?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:otcCart.length?"pointer":"not-allowed",fontSize:13,fontWeight:700}}>
+                    Complete Sale
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* payment modal */}
+          {otcPaymentModal&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Payment</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>{otcCustomer.name} · ₱{otcCartTotal}</div>
+                  </div>
+                  <button onClick={()=>setOtcPaymentModal(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
+                </div>
+                <div style={{padding:"22px"}}>
+                  {otcType==="employee"&&(
+                    <div style={{borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,border:"1px solid "+(otcInsufficient?"#FCD34D":"#A7F3D0"),background:otcInsufficient?"#FEF3C7":"#F0FDF4",color:otcInsufficient?"#92400E":"#065F46"}}>
+                      💳 Credit Balance: ₱{(otcCustomer.creditBalance||0).toLocaleString()}
+                      {otcInsufficient&&<div style={{marginTop:4,fontWeight:600}}>⚠️ Not enough for Credit — Cash only.</div>}
+                    </div>
+                  )}
+                  <div style={{display:"grid",gridTemplateColumns:otcType==="employee"?"1fr 1fr":"1fr",gap:12}}>
+                    <button onClick={()=>completeOtcSale("Cash")}
+                      style={{background:"#F0FDF4",color:"#065F46",border:"2px solid #A7F3D0",borderRadius:12,padding:"18px 12px",cursor:"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:28}}>💵</span><span>Cash</span>
+                    </button>
+                    {otcType==="employee"&&(
+                      <button onClick={()=>{if(otcInsufficient)return;completeOtcSale("Credit");}} disabled={otcInsufficient}
+                        style={{background:otcInsufficient?"#F3F4F6":PURPLE_LIGHT,color:otcInsufficient?"#9CA3AF":PURPLE,border:"2px solid "+(otcInsufficient?"#E5E7EB":PURPLE+"44"),borderRadius:12,padding:"18px 12px",cursor:otcInsufficient?"not-allowed":"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6,opacity:otcInsufficient?0.7:1}}>
+                        <span style={{fontSize:28}}>💳</span><span>Credit</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

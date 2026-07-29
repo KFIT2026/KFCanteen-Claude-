@@ -193,11 +193,15 @@ const orderToDb = (o) => ({
   total: o.total,
   payment_type: o.paymentType || null,
   time: o.time,
+  source: o.source || "app",
+  encoded_by: o.encodedBy || null,
+  guest_type: o.guestType || null,
 });
 
 const orderFromDb = (r) => ({
   id: r.id, userId: r.user_id, user: r.user_name, date: r.date, plant: r.plant,
   items: r.items, total: Number(r.total), paymentType: r.payment_type, time: r.time,
+  source: r.source || "app", encodedBy: r.encoded_by, guestType: r.guest_type,
 });
 
 export const fetchOrders = async () => {
