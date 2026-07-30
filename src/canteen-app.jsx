@@ -3461,12 +3461,12 @@ export default function KFCanteen() {
                       function doDownload() {
                         wb = window.XLSX.utils.book_new();
                         var wsData = [
-                          ["SECTION/DEPT.","EMPLOYEE NO.","POSITION","EMPLOYEE NAME","COMPANY"],
-                          ["ACCOUNTING","KF-24-0001","STAFF","Juan Dela Cruz","KOU FU COLOR PRINTING CORPORATION"],
-                          ["QA","CT-24-0002","OPERATOR","Maria Santos","COLORTREE LABEL CORPORATION"],
+                          ["SECTION/DEPT.","EMPLOYEE NO.","POSITION","EMPLOYEE NAME","COMPANY","CREDIT LIMIT"],
+                          ["ACCOUNTING","KF-24-0001","STAFF","Juan Dela Cruz","KOU FU COLOR PRINTING CORPORATION","500"],
+                          ["QA","CT-24-0002","OPERATOR","Maria Santos","COLORTREE LABEL CORPORATION","500"],
                         ];
                         var ws = window.XLSX.utils.aoa_to_sheet(wsData);
-                        ws["!cols"] = [{wch:16},{wch:14},{wch:14},{wch:24},{wch:32}];
+                        ws["!cols"] = [{wch:16},{wch:14},{wch:14},{wch:24},{wch:32},{wch:14}];
                         window.XLSX.utils.book_append_sheet(wb, ws, "Employees");
                         window.XLSX.writeFile(wb, "KFCanteen_Employee_Template.xlsx");
                       }
@@ -3490,6 +3490,7 @@ export default function KFCanteen() {
                         {col:"POSITION", desc:"Job title", req:false},
                         {col:"EMPLOYEE NAME", desc:"Full name of employee", req:true},
                         {col:"COMPANY", desc:"Employer company as shown in HR records", req:false},
+                        {col:"CREDIT LIMIT", desc:"Per-employee limit — overrides the default below if filled in", req:false},
                       ].map(c=>(
                         <div key={c.col} style={{display:"flex",gap:6,alignItems:"flex-start"}}>
                           <span style={{fontFamily:"monospace",background:"#E5E7EB",padding:"1px 6px",borderRadius:4,fontSize:11,flexShrink:0,color:"#374151"}}>{c.col}</span>
@@ -3502,13 +3503,13 @@ export default function KFCanteen() {
 
                   {/* Credit limit for imported employees */}
                   <div style={{marginBottom:18}}>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Credit Limit for Imported Employees</label>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Default Credit Limit</label>
                     <div style={{position:"relative",maxWidth:200}}>
                       <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9CA3AF",fontWeight:600}}>₱</span>
                       <input value={importCreditLimit} onChange={e=>setImportCreditLimit(e.target.value)} type="number" min="0" placeholder="500"
                         style={{width:"100%",fontSize:14,padding:"9px 12px 9px 26px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
                     </div>
-                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Applied to every employee in this upload as both their credit limit and starting balance.</div>
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Used as both credit limit and starting balance for any employee whose row doesn't have its own CREDIT LIMIT column filled in.</div>
                   </div>
 
                   {/* Upload area */}
@@ -3551,6 +3552,8 @@ export default function KFCanteen() {
                                 var department = col(row,"SECTION/DEPT.") || col(row,"SECTION/DEPT") || col(row,"DEPARTMENT");
                                 var position = col(row,"POSITION");
                                 var company = col(row,"COMPANY");
+                                var creditLimitRaw = col(row,"CREDIT LIMIT") || col(row,"CREDIT_LIMIT");
+                                var rowCreditLimit = creditLimitRaw!==""&&!isNaN(parseFloat(creditLimitRaw)) ? parseFloat(creditLimitRaw) : null;
 
                                 if(!idNum||!name){ errors.push("Row "+(i+1)+": missing Employee No. or Employee Name"); continue; }
                                 if(seenIds[idNum]){ skippedDup++; continue; }
@@ -3559,7 +3562,7 @@ export default function KFCanteen() {
                                 seenIds[idNum] = true;
                                 // Plant is intentionally left unassigned here — an admin assigns
                                 // it manually afterwards (e.g. KF-Global has no source spreadsheet).
-                                valid.push({ idNumber:idNum, name:toProperCase(name), department, position, company, plant:"", role:"user" });
+                                valid.push({ idNumber:idNum, name:toProperCase(name), department, position, company, creditLimit:rowCreditLimit, plant:"", role:"user" });
                               }
                               if(skippedDup>0){ errors.push(skippedDup+" row"+(skippedDup>1?"s":"")+" skipped — Employee No. already exists in the system."); }
                               if(errors.length) { setImportError(errors.slice(0,5).join("\n")+(errors.length>5?"\n...and "+(errors.length-5)+" more":"")); }
@@ -3596,7 +3599,7 @@ export default function KFCanteen() {
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                           <thead>
                             <tr style={{background:"#F9FAFB"}}>
-                              {["ID Number","Name","Department","Position","Company"].map(h=>(
+                              {["ID Number","Name","Department","Position","Company","Credit Limit"].map(h=>(
                                 <th key={h} style={{padding:"8px 12px",textAlign:"left",fontWeight:600,color:"#6B7280",borderBottom:"1px solid #E5E7EB"}}>{h}</th>
                               ))}
                             </tr>
@@ -3609,6 +3612,7 @@ export default function KFCanteen() {
                                 <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.department||"—"}</td>
                                 <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.position||"—"}</td>
                                 <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500}}>{e.company||"—"}</td>
+                                <td style={{padding:"7px 12px",color:e.creditLimit!=null?"#059669":"#9CA3AF"}}>{e.creditLimit!=null?"₱"+e.creditLimit.toLocaleString():"(default)"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -3647,8 +3651,9 @@ export default function KFCanteen() {
                     var toImport = importPreview.filter(function(emp) {
                       return !users.some(function(u){ return (u.idNumber||"").trim()===emp.idNumber; });
                     });
-                    var creditLimit = parseFloat(importCreditLimit)||0;
+                    var defaultCreditLimit = parseFloat(importCreditLimit)||0;
                     var newUsers = toImport.map(function(emp) {
+                      var creditLimit = emp.creditLimit!=null ? emp.creditLimit : defaultCreditLimit;
                       return {
                         id:"u"+Date.now()+Math.random(),
                         username:null,password:"",
