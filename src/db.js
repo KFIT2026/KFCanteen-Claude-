@@ -491,3 +491,25 @@ export const dbInsertSuggestion = async (entry) => {
   const { error } = await supabase.from("suggestions").insert(suggestionToDb(entry));
   if (error) console.error("dbInsertSuggestion failed:", error);
 };
+
+/* ── suggestion_replies table ── */
+
+const suggestionReplyToDb = (r) => ({
+  id: r.id, suggestion_id: r.suggestionId, author_id: r.authorId,
+  author_name: r.authorName, author_role: r.authorRole, content: r.content,
+});
+const suggestionReplyFromDb = (r) => ({
+  id: r.id, suggestionId: r.suggestion_id, authorId: r.author_id,
+  authorName: r.author_name, authorRole: r.author_role, content: r.content, createdAt: r.created_at,
+});
+
+export const fetchSuggestionReplies = async () => {
+  const { data, error } = await supabase.from("suggestion_replies").select("*").order("created_at", { ascending: true });
+  if (error) { console.error("fetchSuggestionReplies failed:", error); return []; }
+  return data.map(suggestionReplyFromDb);
+};
+
+export const dbInsertSuggestionReply = async (entry) => {
+  const { error } = await supabase.from("suggestion_replies").insert(suggestionReplyToDb(entry));
+  if (error) console.error("dbInsertSuggestionReply failed:", error);
+};

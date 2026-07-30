@@ -12,6 +12,7 @@ import {
   fetchPlantCloses, dbInsertPlantClose, dbReopenPlantClose,
   fetchExcessDecisions, dbInsertExcessDecision,
   fetchSuggestions, dbInsertSuggestion,
+  fetchSuggestionReplies, dbInsertSuggestionReply,
 } from "./db";
 
 const PURPLE = "#6B21A8";
@@ -364,6 +365,9 @@ export default function KFCanteen() {
   const [suggestions, setSuggestions] = useState([]);
   useEffect(() => { fetchSuggestions().then(setSuggestions); }, []);
   const [newSuggestionText, setNewSuggestionText] = useState("");
+  const [suggestionReplies, setSuggestionReplies] = useState([]);
+  useEffect(() => { fetchSuggestionReplies().then(setSuggestionReplies); }, []);
+  const [replyDrafts, setReplyDrafts] = useState({}); // { [suggestionId]: draftText }
 
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closePlant, setClosePlant] = useState("");
@@ -1017,6 +1021,32 @@ export default function KFCanteen() {
     dbInsertSuggestion(entry);
     setNewSuggestionText("");
   };
+  const submitSuggestionReply = (suggestionId) => {
+    const content = (replyDrafts[suggestionId]||"").trim();
+    if(!content) return;
+    const entry = { id:"sr"+Date.now()+Math.random().toString(36).slice(2), suggestionId, authorId:currentUser.id, authorName:currentUser.name, authorRole:role, content, createdAt:new Date().toISOString() };
+    setSuggestionReplies(prev=>[...prev, entry]);
+    dbInsertSuggestionReply(entry);
+    setReplyDrafts(prev=>({...prev, [suggestionId]:""}));
+  };
+  // How to label a thread message's author to the current viewer — admin/superadmin
+  // replies always read as "Administrator" unless you ARE superadmin; the original
+  // submitter's own follow-ups stay anonymized the same way the suggestion itself is.
+  const suggestionAuthorLabel = (msgAuthorId, msgAuthorRole, msgAuthorName) => {
+    if(msgAuthorRole==="admin"||msgAuthorRole==="superadmin") return role==="superadmin" ? msgAuthorName : "Administrator";
+    if(msgAuthorId===currentUser.id) return "You";
+    return role==="superadmin" ? msgAuthorName : "Anonymous";
+  };
+  // A suggestion "needs an admin response" if its most recent activity
+  // (last reply, or the original post if there are no replies yet) wasn't
+  // authored by an admin/superadmin.
+  const suggestionNeedsAdminResponse = (suggestionId) => {
+    const replies = suggestionReplies.filter(r=>r.suggestionId===suggestionId);
+    if(replies.length===0) return true;
+    const last = replies[replies.length-1];
+    return !(last.authorRole==="admin"||last.authorRole==="superadmin");
+  };
+  const suggestionsAwaitingAdmin = isAdminLike ? suggestions.filter(s=>suggestionNeedsAdminResponse(s.id)).length : 0;
 
   const addReceipts = () => {
     if(!receiptPhotos.length) return;
@@ -1498,6 +1528,7 @@ export default function KFCanteen() {
                 <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
                 <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
                 {n.id==="cart"&&cartCount>0&&<span style={{marginLeft:"auto",background:PURPLE,color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
+                {n.id==="suggestions"&&isAdminLike&&suggestionsAwaitingAdmin>0&&<span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{suggestionsAwaitingAdmin}</span>}
               </button>
             );
           })}
@@ -4849,6 +4880,38 @@ export default function KFCanteen() {
     /* ── SUGGESTION BOX ── */
     if(activeTab==="suggestions") {
       const myHistory = suggestions.filter(s=>s.userId===currentUser.id);
+
+      const Thread = ({s}) => {
+        const replies = suggestionReplies.filter(r=>r.suggestionId===s.id);
+        const draft = replyDrafts[s.id]||"";
+        return (
+          <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
+            {replies.map(r=>{
+              const isAdminMsg = r.authorRole==="admin"||r.authorRole==="superadmin";
+              return (
+                <div key={r.id} style={{background:isAdminMsg?PURPLE_LIGHT:"#F9FAFB",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
+                  <div style={{fontSize:12,color:"#111"}}>{r.content}</div>
+                  <div style={{fontSize:10,color:"#9CA3AF",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontWeight:600,color:isAdminMsg?PURPLE:"#6B7280"}}>{suggestionAuthorLabel(r.authorId,r.authorRole,r.authorName)}</span>
+                    <span>· {new Date(r.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})} · {new Date(r.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{display:"flex",gap:6,marginTop:6}}>
+              <input value={draft} onChange={e=>setReplyDrafts(prev=>({...prev,[s.id]:e.target.value}))}
+                onKeyDown={e=>{if(e.key==="Enter"&&draft.trim()) submitSuggestionReply(s.id);}}
+                placeholder="Write a reply..."
+                style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:7,border:"1.5px solid #E5E7EB",outline:"none",boxSizing:"border-box"}} />
+              <button onClick={()=>submitSuggestionReply(s.id)} disabled={!draft.trim()}
+                style={{background:draft.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:7,padding:"7px 14px",cursor:draft.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                Reply
+              </button>
+            </div>
+          </div>
+        );
+      };
+
       return (
         <div>
           <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:"0 0 16px",display:"flex",alignItems:"center",gap:10}}>
@@ -4870,12 +4933,19 @@ export default function KFCanteen() {
             <Empty msg="No suggestions yet" sub="Anything you submit will show up here." />
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:isAdminLike?28:0}}>
-              {myHistory.map(s=>(
-                <div key={s.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px"}}>
-                  <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
-                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>{new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
-                </div>
-              ))}
+              {myHistory.map(s=>{
+                const adminReplied = !suggestionNeedsAdminResponse(s.id) && suggestionReplies.some(r=>r.suggestionId===s.id);
+                return (
+                  <div key={s.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px"}}>
+                    <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6}}>
+                      <span>{new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                      {adminReplied&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>💬 Administrator replied</span>}
+                    </div>
+                    <Thread s={s} />
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -4883,23 +4953,30 @@ export default function KFCanteen() {
             <>
               <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 4px"}}>All Suggestions</h3>
               <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>
-                {role==="superadmin" ? "You can see who submitted each one — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter identity is hidden here for privacy. It can still be looked up internally if a suggestion needs to be traced back (e.g. foul language)."}
+                {role==="superadmin" ? "You can see who submitted each one and who replied — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter and admin-reply identities are hidden here for privacy. They can still be looked up internally if a suggestion needs to be traced back (e.g. foul language)."}
               </div>
               {suggestions.length===0 ? (
                 <Empty msg="No suggestions yet" sub="Submissions from every role will show up here." />
               ) : (
                 <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
-                  {suggestions.map(s=>(
-                    <div key={s.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6"}}>
-                      <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
-                      <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6}}>
-                        {role==="superadmin"
-                          ? <span style={{fontWeight:600,color:PURPLE}}>{s.userName}</span>
-                          : <span style={{fontStyle:"italic"}}>Anonymous</span>}
-                        <span>· {new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                  {suggestions.map(s=>{
+                    const needsResponse = suggestionNeedsAdminResponse(s.id);
+                    return (
+                      <div key={s.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6"}}>
+                        <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                        <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          {role==="superadmin"
+                            ? <span style={{fontWeight:600,color:PURPLE}}>{s.userName}</span>
+                            : <span style={{fontStyle:"italic"}}>Anonymous</span>}
+                          <span>· {new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                          {needsResponse
+                            ? <span style={{background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>🕓 Awaiting your reply</span>
+                            : <span style={{background:"#D1FAE5",color:"#065F46",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>✅ Replied</span>}
+                        </div>
+                        <Thread s={s} />
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
