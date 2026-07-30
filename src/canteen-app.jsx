@@ -14,6 +14,7 @@ import {
   fetchSuggestions, dbInsertSuggestion,
   fetchSuggestionReplies, dbInsertSuggestionReply,
 } from "./db";
+import { supabase } from "./supabaseClient";
 
 const PURPLE = "#6B21A8";
 const PURPLE_LIGHT = "#EDE9FE";
@@ -63,7 +64,7 @@ const TODAY = getDateKey(TODAY_DATE);
 const MEAL_CATS = ["ALL","BREAKFAST","LUNCH","SNACK"];
 
 
-const PLANTS = ["KF-Main","Colortree","KF-Global"];
+const PLANTS = ["KF Main","Colortree","KF II (Global)"];
 
 // dish serving units — a dish's serving size can be measured by weight,
 // piece count, or cup count. The excess-repurpose math is a straight
@@ -220,7 +221,7 @@ export default function KFCanteen() {
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importProgress, setImportProgress] = useState({done:0, total:0});
   const [importCreditLimit, setImportCreditLimit] = useState("500");
-  const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF-Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF-Main"}]});
+  const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF Main"}]});
   const [addEmployeeError, setAddEmployeeError] = useState("");
   const [addEmployeeSubmitting, setAddEmployeeSubmitting] = useState(false);
   const [selectedUnregisteredIds, setSelectedUnregisteredIds] = useState([]);
@@ -380,6 +381,31 @@ export default function KFCanteen() {
   // receipts
   const [receipts, setReceipts] = useState([]);
   useEffect(() => { fetchReceipts().then(setReceipts); }, []);
+
+  // Realtime sync — whenever any of these tables change (from this session,
+  // another admin's session, or a direct DB edit), refetch that table so
+  // every open tab reflects it within moments instead of only on reload.
+  useEffect(() => {
+    const channel = supabase
+      .channel("db-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "users" }, () => fetchUsers().then(rows => { setUsers(rows); setUsersLoading(false); }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "menu_items" }, () => fetchMenu().then(setMenu))
+      .on("postgres_changes", { event: "*", schema: "public", table: "other_products" }, () => fetchProducts().then(setOtherProducts))
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => fetchOrders().then(setOrders))
+      .on("postgres_changes", { event: "*", schema: "public", table: "receipts" }, () => fetchReceipts().then(setReceipts))
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_log" }, () => fetchInventoryLog().then(setInventoryLog))
+      .on("postgres_changes", { event: "*", schema: "public", table: "raw_materials" }, () => fetchRawMaterials().then(setRawMaterials))
+      .on("postgres_changes", { event: "*", schema: "public", table: "raw_material_log" }, () => fetchRawMaterialLog().then(setRawMaterialLog))
+      .on("postgres_changes", { event: "*", schema: "public", table: "dishes" }, () => fetchDishes().then(setDishes))
+      .on("postgres_changes", { event: "*", schema: "public", table: "dish_ingredients" }, () => fetchDishes().then(setDishes))
+      .on("postgres_changes", { event: "*", schema: "public", table: "plant_closes" }, () => fetchPlantCloses().then(setPlantCloses))
+      .on("postgres_changes", { event: "*", schema: "public", table: "dish_excess_decisions" }, () => fetchExcessDecisions().then(setExcessDecisions))
+      .on("postgres_changes", { event: "*", schema: "public", table: "suggestions" }, () => fetchSuggestions().then(setSuggestions))
+      .on("postgres_changes", { event: "*", schema: "public", table: "suggestion_replies" }, () => fetchSuggestionReplies().then(setSuggestionReplies))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   const [showAddReceipt, setShowAddReceipt] = useState(false);
   const [newReceipt, setNewReceipt] = useState({ date:toDateKey(new Date()), source:"Grocery", sourceName:"", purchaseType:"Grocery", note:"" });
   const [receiptPhotos, setReceiptPhotos] = useState([]); // [{tempId, photo, amount}]
@@ -725,7 +751,7 @@ export default function KFCanteen() {
 
   const placeOrder = () => {
     if(!cart.length) return;
-    const plant = orderPlant || currentUser.plant || "KF-Main";
+    const plant = orderPlant || currentUser.plant || "KF Main";
     // orders with no scheduled (advance) date are for "today" — if this plant
     // already closed today, roll them onto tomorrow instead of blocking the order.
     // advance orders (scheduledDate already set) are left untouched.
@@ -761,7 +787,7 @@ export default function KFCanteen() {
 
   const completeOtcSale = (paymentType) => {
     if(!otcCart.length||!otcCustomer) return;
-    const plant = currentUser.plant||"KF-Main";
+    const plant = currentUser.plant||"KF Main";
     const isEmployee = otcType==="employee";
     const order = {
       id: nextOrderId(),
@@ -1841,7 +1867,7 @@ export default function KFCanteen() {
                 <div style={{fontSize:12,color:"#6B7280"}}>Total Amount</div>
                 <div style={{fontSize:22,fontWeight:800,color:PURPLE}}>₱{cartTotal}</div>
               </div>
-              <button onClick={()=>{setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF-Main");}} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"11px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+              <button onClick={()=>{setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF Main");}} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"11px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
                 Place Order
               </button>
             </div>
@@ -2417,7 +2443,7 @@ export default function KFCanteen() {
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
               </div>
               {(isAdminLike||role==="staff-admin"||role==="staff")&&(
-                <button onClick={()=>{setClosePlant((role==="staff"||role==="staff-admin")?currentUser.plant:(closePlant||"KF-Main"));setExcessInputs({});setRepurposeChoiceFor(null);setShowCloseModal(true);}}
+                <button onClick={()=>{setClosePlant((role==="staff"||role==="staff-admin")?currentUser.plant:(closePlant||"KF Main"));setExcessInputs({});setRepurposeChoiceFor(null);setShowCloseModal(true);}}
                   style={{background:"#111827",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
                   🔒 Close Canteen
                 </button>
@@ -3498,7 +3524,7 @@ export default function KFCanteen() {
                         </div>
                       ))}
                     </div>
-                    <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Company is informational only — it does not set the Plant. Plant (KF-Main, Colortree, KF-Global) is assigned by an admin afterwards in the Employees table. Rows with an Employee No. that already exists in the system are skipped automatically to avoid duplicates.</div>
+                    <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Company is informational only — it does not set the Plant. Plant (KF Main, Colortree, KF II (Global)) is assigned by an admin afterwards in the Employees table. Rows with an Employee No. that already exists in the system are skipped automatically to avoid duplicates.</div>
                   </div>
 
                   {/* Credit limit for imported employees */}
@@ -3561,7 +3587,7 @@ export default function KFCanteen() {
 
                                 seenIds[idNum] = true;
                                 // Plant is intentionally left unassigned here — an admin assigns
-                                // it manually afterwards (e.g. KF-Global has no source spreadsheet).
+                                // it manually afterwards (e.g. KF II (Global) has no source spreadsheet).
                                 valid.push({ idNumber:idNum, name:toProperCase(name), department, position, company, creditLimit:rowCreditLimit, plant:"", role:"user" });
                               }
                               if(skippedDup>0){ errors.push(skippedDup+" row"+(skippedDup>1?"s":"")+" skipped — Employee No. already exists in the system."); }
@@ -3716,7 +3742,7 @@ export default function KFCanteen() {
                     <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Employees</div>
                     <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Fill in each row — click "+ Add Another" to add more</div>
                   </div>
-                  <button onClick={()=>{setShowAddEmployeeModal(false);setNewEmployee({name:"",plant:"KF-Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]});}}
+                  <button onClick={()=>{setShowAddEmployeeModal(false);setNewEmployee({name:"",plant:"KF Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]});}}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
                 </div>
 
@@ -3729,7 +3755,7 @@ export default function KFCanteen() {
                     ))}
                   </div>
 
-                  {(newEmployee.rows||[{id:1,idNumber:"",name:"",plant:"KF-Main"}]).map((row,idx)=>(
+                  {(newEmployee.rows||[{id:1,idNumber:"",name:"",plant:"KF Main"}]).map((row,idx)=>(
                     <div key={row.id} style={{display:"grid",gridTemplateColumns:"1fr 2fr 1.4fr 32px",gap:8,marginBottom:10,alignItems:"center"}}>
                       {/* ID Number */}
                       <input value={row.idNumber}
@@ -3758,7 +3784,7 @@ export default function KFCanteen() {
                   ))}
 
                   {/* Add another row */}
-                  <button onClick={()=>setNewEmployee(p=>({...p,rows:[...(p.rows||[]),{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]}))}
+                  <button onClick={()=>setNewEmployee(p=>({...p,rows:[...(p.rows||[]),{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]}))}
                     style={{width:"100%",padding:"10px",border:"1.5px dashed #D1D5DB",borderRadius:9,background:"#F9FAFB",color:"#6B7280",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:4}}>
                     <Icon name="plus" size={14} color="#6B7280" /> Add Another
                   </button>
@@ -3779,7 +3805,7 @@ export default function KFCanteen() {
                     </div>
                   )}
                   <div style={{display:"flex",gap:10}}>
-                    <button onClick={()=>{setShowAddEmployeeModal(false);setAddEmployeeError("");setNewEmployee({name:"",plant:"KF-Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]});}}
+                    <button onClick={()=>{setShowAddEmployeeModal(false);setAddEmployeeError("");setNewEmployee({name:"",plant:"KF Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]});}}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
                     <button disabled={!(newEmployee.rows||[]).some(r=>r.name.trim())||addEmployeeSubmitting} onClick={async ()=>{
                       var validRows = (newEmployee.rows||[]).filter(r=>r.name.trim());
@@ -3799,7 +3825,7 @@ export default function KFCanteen() {
                       }
                       setUsers(prev=>[...prev,...newUsers]);
                       setShowAddEmployeeModal(false);
-                      setNewEmployee({name:"",plant:"KF-Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF-Main"}]});
+                      setNewEmployee({name:"",plant:"KF Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]});
                     }} style={{flex:2,background:((newEmployee.rows||[]).some(r=>r.name.trim())&&!addEmployeeSubmitting)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:((newEmployee.rows||[]).some(r=>r.name.trim())&&!addEmployeeSubmitting)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
                       {addEmployeeSubmitting?"Saving...":"Save All Employees"}
                     </button>
