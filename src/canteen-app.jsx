@@ -3641,24 +3641,24 @@ export default function KFCanteen() {
                       <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:8}}>
                         ✅ {importPreview.length} employee{importPreview.length>1?"s":""} ready to import
                       </div>
-                      <div style={{border:"1px solid #E5E7EB",borderRadius:10,overflow:"hidden",maxHeight:200,overflowY:"auto"}}>
-                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <div style={{border:"1px solid #E5E7EB",borderRadius:10,maxHeight:200,overflow:"auto"}}>
+                        <table style={{width:"100%",minWidth:720,borderCollapse:"collapse",fontSize:12}}>
                           <thead>
                             <tr style={{background:"#F9FAFB"}}>
                               {["ID Number","Name","Department","Position","Company","Credit Limit"].map(h=>(
-                                <th key={h} style={{padding:"8px 12px",textAlign:"left",fontWeight:600,color:"#6B7280",borderBottom:"1px solid #E5E7EB"}}>{h}</th>
+                                <th key={h} style={{padding:"8px 12px",textAlign:"left",fontWeight:600,color:"#6B7280",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB"}}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {importPreview.map((e,i)=>(
                               <tr key={i} style={{borderBottom:"1px solid #F3F4F6"}}>
-                                <td style={{padding:"7px 12px",fontFamily:"monospace",color:"#374151"}}>{e.idNumber}</td>
-                                <td style={{padding:"7px 12px",fontWeight:600,color:"#111"}}>{e.name}</td>
-                                <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.department||"—"}</td>
-                                <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.position||"—"}</td>
-                                <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500}}>{e.company||"—"}</td>
-                                <td style={{padding:"7px 12px",color:"#059669"}}>₱{e.creditLimit.toLocaleString()}</td>
+                                <td style={{padding:"7px 12px",fontFamily:"monospace",color:"#374151",whiteSpace:"nowrap"}}>{e.idNumber}</td>
+                                <td style={{padding:"7px 12px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>{e.name}</td>
+                                <td style={{padding:"7px 12px",color:"#6B7280",whiteSpace:"nowrap"}}>{e.department||"—"}</td>
+                                <td style={{padding:"7px 12px",color:"#6B7280",whiteSpace:"nowrap"}}>{e.position||"—"}</td>
+                                <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500,whiteSpace:"nowrap"}}>{e.company||"—"}</td>
+                                <td style={{padding:"7px 12px",color:"#059669",whiteSpace:"nowrap"}}>₱{e.creditLimit.toLocaleString()}</td>
                               </tr>
                             ))}
                           </tbody>
