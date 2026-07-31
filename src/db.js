@@ -136,6 +136,85 @@ export const dbDeleteMenuItem = async (id) => {
   if (error) console.error("dbDeleteMenuItem failed:", error);
 };
 
+/* ── short_order_items / visitor_menu_items tables ── */
+/* fixed, non-dated menus — same shape as menu_items minus week_key/day */
+
+const fixedMenuItemToDb = (m) => ({
+  id: m.id,
+  name: m.name,
+  price: m.price,
+  available: m.available,
+  img: m.img,
+  is_photo: m.isPhoto,
+  cat: m.cat,
+  grams: m.grams,
+  serving_unit: m.servingUnit || "g",
+  dish_id: m.dishId || null,
+});
+
+const fixedMenuItemFromDb = (r) => ({
+  id: r.id, name: r.name, price: Number(r.price), available: r.available,
+  img: r.img, isPhoto: r.is_photo, cat: r.cat, grams: r.grams==null?null:Number(r.grams),
+  servingUnit: r.serving_unit || "g",
+  dishId: r.dish_id || null,
+});
+
+export const fetchShortOrderItems = async () => {
+  const { data, error } = await supabase.from("short_order_items").select("*");
+  if (error) { console.error("fetchShortOrderItems failed:", error); return []; }
+  return data.map(fixedMenuItemFromDb);
+};
+export const dbInsertShortOrderItem = async (item) => {
+  const { error } = await supabase.from("short_order_items").insert(fixedMenuItemToDb(item));
+  if (error) console.error("dbInsertShortOrderItem failed:", error);
+};
+export const dbUpdateShortOrderItem = async (id, patch) => {
+  const dbPatch = {};
+  if ("available" in patch) dbPatch.available = patch.available;
+  if ("name" in patch) dbPatch.name = patch.name;
+  if ("price" in patch) dbPatch.price = patch.price;
+  if ("img" in patch) dbPatch.img = patch.img;
+  if ("isPhoto" in patch) dbPatch.is_photo = patch.isPhoto;
+  if ("cat" in patch) dbPatch.cat = patch.cat;
+  if ("grams" in patch) dbPatch.grams = patch.grams;
+  if ("servingUnit" in patch) dbPatch.serving_unit = patch.servingUnit;
+  if ("dishId" in patch) dbPatch.dish_id = patch.dishId;
+  const { error } = await supabase.from("short_order_items").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateShortOrderItem failed:", error);
+};
+export const dbDeleteShortOrderItem = async (id) => {
+  const { error } = await supabase.from("short_order_items").delete().eq("id", id);
+  if (error) console.error("dbDeleteShortOrderItem failed:", error);
+};
+
+export const fetchVisitorMenuItems = async () => {
+  const { data, error } = await supabase.from("visitor_menu_items").select("*");
+  if (error) { console.error("fetchVisitorMenuItems failed:", error); return []; }
+  return data.map(fixedMenuItemFromDb);
+};
+export const dbInsertVisitorMenuItem = async (item) => {
+  const { error } = await supabase.from("visitor_menu_items").insert(fixedMenuItemToDb(item));
+  if (error) console.error("dbInsertVisitorMenuItem failed:", error);
+};
+export const dbUpdateVisitorMenuItem = async (id, patch) => {
+  const dbPatch = {};
+  if ("available" in patch) dbPatch.available = patch.available;
+  if ("name" in patch) dbPatch.name = patch.name;
+  if ("price" in patch) dbPatch.price = patch.price;
+  if ("img" in patch) dbPatch.img = patch.img;
+  if ("isPhoto" in patch) dbPatch.is_photo = patch.isPhoto;
+  if ("cat" in patch) dbPatch.cat = patch.cat;
+  if ("grams" in patch) dbPatch.grams = patch.grams;
+  if ("servingUnit" in patch) dbPatch.serving_unit = patch.servingUnit;
+  if ("dishId" in patch) dbPatch.dish_id = patch.dishId;
+  const { error } = await supabase.from("visitor_menu_items").update(dbPatch).eq("id", id);
+  if (error) console.error("dbUpdateVisitorMenuItem failed:", error);
+};
+export const dbDeleteVisitorMenuItem = async (id) => {
+  const { error } = await supabase.from("visitor_menu_items").delete().eq("id", id);
+  if (error) console.error("dbDeleteVisitorMenuItem failed:", error);
+};
+
 /* ── other_products table ── */
 
 const productToDb = (p) => ({
