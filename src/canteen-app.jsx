@@ -474,7 +474,8 @@ export default function KFCanteen() {
     return "KF" + String(next).padStart(6, "0");
   };
   const handleLogin = () => {
-    const found = users.find(u=>u.username===loginForm.username && u.password===loginForm.password && u.registered);
+    const usernameInput = loginForm.username.trim();
+    const found = users.find(u=>u.username===usernameInput && u.password===loginForm.password && u.registered);
     if (found) {
       // auto-reset credit on 15th or last day of month
       const today = new Date();
@@ -490,7 +491,18 @@ export default function KFCanteen() {
       setLoginError("");
       setActiveTab(found.role==="user"?"menu":(found.role==="admin"||found.role==="superadmin")?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
       if(updatedUser.creditBalance < 100) setCreditNotif(true);
-    } else setLoginError("Incorrect username or password.");
+    } else {
+      // An employee whose ID number was already added by an admin but who
+      // hasn't completed registration yet has no username/password set —
+      // "incorrect password" is misleading for them, since they never set
+      // one. Point them to registration instead of implying a typo.
+      const unregisteredMatch = users.find(u=>!u.registered && u.isEmployee!==false && (u.idNumber||"").toLowerCase()===usernameInput.toLowerCase());
+      if (unregisteredMatch) {
+        setLoginError("This ID Number hasn't been registered yet. Tap \"Create Account\" below to register first.");
+      } else {
+        setLoginError("Incorrect ID Number or password.");
+      }
+    }
   };
   const handleLogout = () => { setCurrentUser(null); setLoginForm({username:"",password:""}); setCart([]); setLoginError(""); setCreditNotif(false); setSidebarOpen(false); };
 
@@ -1374,9 +1386,9 @@ export default function KFCanteen() {
         {!showRegister ? (
           <>
             <div style={{marginBottom:14}}>
-              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Username</label>
+              <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>ID Number</label>
               <input value={loginForm.username} onChange={e=>setLoginForm(p=>({...p,username:e.target.value}))}
-                onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Enter your username"
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Enter your ID Number"
                 style={{width:"100%",padding:"11px 14px",borderRadius:10,border:loginError?"1.5px solid #EF4444":"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none"}} />
             </div>
             <div style={{marginBottom:6}}>
