@@ -147,7 +147,7 @@ const NAV = {
     { id:"cart",      label:"Cart",            icon:"cart" },
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
-    { id:"mgproducts",label:"Manage Products", icon:"products" },
+    { id:"mgproducts",label:"Manage Groceries", icon:"products" },
     { id:"rawmaterials",label:"Raw Materials", icon:"scale" },
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
@@ -159,7 +159,7 @@ const NAV = {
   "staff-admin": [
     { id:"mgmenu",    label:"Manage Menu",     icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
-    { id:"mgproducts",label:"Manage Products", icon:"products" },
+    { id:"mgproducts",label:"Manage Groceries", icon:"products" },
     { id:"rawmaterials",label:"Raw Materials", icon:"scale" },
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
@@ -247,7 +247,7 @@ export default function KFCanteen() {
   const selectedDay = getDateKey(selectedDate); // the Mon-Sat day name for menu lookup
   const selectedWeekKey = getWeekKey(selectedDate);
   const [mealCat, setMealCat] = useState("ALL");
-  const [menuView, setMenuView] = useState("Weekly Menu"); // "Weekly Menu" | "Other Products"
+  const [menuView, setMenuView] = useState("Weekly Menu"); // "Weekly Menu" | "Groceries"
   const [searchQ, setSearchQ] = useState("");
 
   // cart & orders
@@ -255,6 +255,7 @@ export default function KFCanteen() {
   const [orders, setOrders] = useState([]);
   useEffect(() => { fetchOrders().then(setOrders); }, []);
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [orderRolledOver, setOrderRolledOver] = useState(false);
   const [showPlantModal, setShowPlantModal] = useState(false);
   const [orderPlant, setOrderPlant] = useState("");
 
@@ -702,7 +703,7 @@ export default function KFCanteen() {
   const removeFromCart = (key) => setCart(prev=>prev.filter(c=>c._key!==key));
 
   // shared by self-service checkout and the staff-run Over the Counter
-  // sale — deducts Other Products stock and, for any item linked to a
+  // sale — deducts Groceries stock and, for any item linked to a
   // dish recipe, the raw materials behind it (excess/repurposed stock
   // first, then purchased stock).
   const deductInventoryForItems = (items) => {
@@ -751,6 +752,16 @@ export default function KFCanteen() {
 
   const placeOrder = () => {
     if(!cart.length) return;
+    // Safety net: today's dishes are supposed to be un-orderable (Add to
+    // Cart disabled) once the 6 AM cutoff passes, but guard here too in
+    // case something was added to the cart before the cutoff and checkout
+    // happens after it — block the whole order rather than silently
+    // dropping items or rescheduling them.
+    const nonAdvanceDishes = cart.filter(c=>c.cat&&!c.scheduledDate);
+    if(nonAdvanceDishes.length>0 && isPastMenuCutoff()){
+      window.alert("Today's ordering cutoff (6:00 AM) has passed, so today's menu items can no longer be ordered. Remove them from your cart, or use \"Order for a future date\" instead.");
+      return;
+    }
     const plant = orderPlant || currentUser.plant || "KF Main";
     // orders with no scheduled (advance) date are for "today" — if this plant
     // already closed today, roll them onto tomorrow instead of blocking the order.
@@ -770,8 +781,9 @@ export default function KFCanteen() {
     setCart([]);
     setOrderPlant("");
     setShowPlantModal(false);
+    setOrderRolledOver(plantClosedToday);
     setOrderPlaced(true);
-    setTimeout(()=>setOrderPlaced(false),3000);
+    setTimeout(()=>setOrderPlaced(false),4000);
     setActiveTab("myorders");
   };
 
@@ -960,6 +972,14 @@ export default function KFCanteen() {
 
   const isPlantClosed = (plant, date=TODAY_KEY) =>
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
+
+  // Today's weekly-menu dishes can only be ordered before 6:00 AM same day —
+  // after that they're simply unavailable to order for today (not rolled
+  // forward — that's what Close Canteen's plant-closed rollover is for).
+  // Doesn't apply to advance (scheduled) orders, and never applies to
+  // Groceries, which aren't prepped/cooked so there's no cutoff reason for
+  // them.
+  const isPastMenuCutoff = () => new Date().getHours() >= 6;
 
   // "qty" below means "amount in the dish's own serving_unit" — literal grams
   // for weight-tracked dishes, a plain piece/cup count otherwise.
@@ -1593,7 +1613,7 @@ export default function KFCanteen() {
   const MenuFilterBar = () => (
     <div style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
       <div style={{display:"flex",gap:4}}>
-        {["Weekly Menu","Other Products"].map(v=>(
+        {["Weekly Menu","Groceries"].map(v=>(
           <button key={v} onClick={()=>{setMenuView(v);setSearchQ("");setMealCat("ALL");setOtherCat("All");}}
             style={{padding:"7px 18px",borderRadius:8,border:"1px solid #E5E7EB",background:menuView===v?"#fff":BG,fontWeight:menuView===v?600:400,fontSize:13,color:menuView===v?"#111":"#6B7280",cursor:"pointer",boxShadow:menuView===v?"0 1px 4px rgba(0,0,0,0.08)":"none"}}>
             {v}
@@ -1719,9 +1739,9 @@ export default function KFCanteen() {
   );
 
   /* ── Food card ── */
-  const FoodCard = ({item, onAdd, isPastDate, scheduledDate}) => {
+  const FoodCard = ({item, onAdd, isPastDate, scheduledDate, cutoffPassed}) => {
     const outOfStock = item.available===false || (item.stock!==undefined && item.stock<=0);
-    const cantOrder = outOfStock || isPastDate;
+    const cantOrder = outOfStock || isPastDate || cutoffPassed;
     return (
       <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden",display:"flex",flexDirection:"column",transition:"box-shadow 0.15s",opacity:cantOrder?0.7:1}}
         onMouseEnter={e=>e.currentTarget.style.boxShadow=cantOrder?"none":"0 4px 16px rgba(107,33,168,0.10)"}
@@ -1759,6 +1779,8 @@ export default function KFCanteen() {
           )}
           {isPastDate
             ? <div style={{textAlign:"center",fontSize:12,color:"#9CA3AF",padding:"7px",background:"#F9FAFB",borderRadius:8,marginTop:"auto",fontWeight:600}}>📅 Past — View Only</div>
+            : cutoffPassed
+            ? <div style={{textAlign:"center",fontSize:12,color:"#92400E",padding:"7px",background:"#FEF3C7",borderRadius:8,marginTop:"auto",fontWeight:600}}>⏰ Cutoff Passed</div>
             : outOfStock
             ? <div style={{textAlign:"center",fontSize:12,color:"#9CA3AF",padding:"7px",background:"#F9FAFB",borderRadius:8,marginTop:"auto",fontWeight:600}}>Out of Stock</div>
             : <button onClick={()=>onAdd(item, scheduledDate)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:"auto"}}>
@@ -1788,6 +1810,16 @@ export default function KFCanteen() {
     if(activeTab==="menu") return (
       <div>
         <Hero />
+        {menuView==="Weekly Menu"&&isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff()&&(
+          <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
+            ⏰ Today's ordering cutoff (6:00 AM) has passed — today's dishes are no longer available to order. Groceries are unaffected, and you can still order dishes for a future date.
+          </div>
+        )}
+        {menuView==="Weekly Menu"&&currentUser.plant&&isSameDay(selectedDate,TODAY_DATE)&&!isPastMenuCutoff()&&isPlantClosed(currentUser.plant)&&(
+          <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
+            🔒 {currentUser.plant} is closed for today. Dishes you order now will be scheduled for tomorrow instead.
+          </div>
+        )}
         <MenuFilterBar />
         {menuView==="Weekly Menu" ? (
           <div>
@@ -1797,7 +1829,8 @@ export default function KFCanteen() {
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14}}>
                 {visibleItems.map(item=><FoodCard key={item.id} item={item} onAdd={addToCart}
                   isPastDate={isPast(selectedDate)&&!isSameDay(selectedDate,TODAY_DATE)}
-                  scheduledDate={isFuture(selectedDate)?selectedDate:null} />)}
+                  scheduledDate={isFuture(selectedDate)?selectedDate:null}
+                  cutoffPassed={isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff()} />)}
               </div>
             )}
           </div>
@@ -2237,7 +2270,7 @@ export default function KFCanteen() {
                           </div>
                         </div>
 
-                        <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Other Products Sold Today</div>
+                        <div style={{fontWeight:700,fontSize:14,color:"#111",marginBottom:8}}>Groceries Sold Today</div>
                         {Object.keys(productOuts).length===0 ? (
                           <div style={{fontSize:12,color:"#9CA3AF",marginBottom:18}}>No other-product sales today.</div>
                         ) : (
@@ -2639,7 +2672,7 @@ export default function KFCanteen() {
           {/* header */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
-              <Icon name="products" size={20} color={PURPLE} /> Manage Other Products
+              <Icon name="products" size={20} color={PURPLE} /> Manage Groceries
             </h2>
             <button onClick={()=>setShowAddProduct(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
               <Icon name="plus" size={14} color="#fff" /> Add Product
@@ -2725,7 +2758,7 @@ export default function KFCanteen() {
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
               <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
                 <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Other Product</div>
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Grocery Item</div>
                   <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                 </div>
@@ -4820,10 +4853,10 @@ export default function KFCanteen() {
                     {!otcMenuSearch.trim()&&<div style={{fontSize:12,color:"#9CA3AF"}}>Type to search today's menu items.</div>}
                     {otcMenuSearch.trim()&&todaysMenuMatches.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No menu items match "{otcMenuSearch}".</div>}
                   </div>
-                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Other Products</h3>
+                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Groceries</h3>
                   <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 12px",background:"#fff",marginBottom:10}}>
                     <Icon name="search" size={14} color="#9CA3AF" />
-                    <input value={otcProductSearch} onChange={e=>setOtcProductSearch(e.target.value)} placeholder="Search other products..."
+                    <input value={otcProductSearch} onChange={e=>setOtcProductSearch(e.target.value)} placeholder="Search groceries..."
                       style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
@@ -4834,8 +4867,8 @@ export default function KFCanteen() {
                         <div style={{fontSize:12,color:PURPLE,fontWeight:700,marginTop:4}}>₱{p.price}</div>
                       </button>
                     ))}
-                    {!otcProductSearch.trim()&&<div style={{fontSize:12,color:"#9CA3AF"}}>Type to search other products.</div>}
-                    {otcProductSearch.trim()&&availableProductMatches.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No products match "{otcProductSearch}".</div>}
+                    {!otcProductSearch.trim()&&<div style={{fontSize:12,color:"#9CA3AF"}}>Type to search groceries.</div>}
+                    {otcProductSearch.trim()&&availableProductMatches.length===0&&<div style={{fontSize:12,color:"#9CA3AF"}}>No groceries match "{otcProductSearch}".</div>}
                   </div>
                 </div>
 
@@ -5189,18 +5222,27 @@ export default function KFCanteen() {
                   <span>Your assigned plant is <strong>{currentUser.plant}</strong></span>
                 </div>
               )}
+              {(()=>{
+                const cartHasNonAdvanceDish = cart.some(c=>c.cat&&!c.scheduledDate);
+                return (
               <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-                {PLANTS.map(p=>(
+                {PLANTS.map(p=>{
+                  const closedRec = cartHasNonAdvanceDish && isPlantClosed(p);
+                  return (
                   <button key={p} onClick={()=>setOrderPlant(p)}
                     style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderRadius:12,border:orderPlant===p?"2px solid "+PURPLE:"1px solid #E5E7EB",background:orderPlant===p?PURPLE_LIGHT:"#fff",cursor:"pointer",textAlign:"left"}}>
                     <div>
                       <div style={{fontWeight:600,fontSize:15,color:orderPlant===p?PURPLE:"#111"}}>{p}</div>
                       {currentUser.plant===p&&<div style={{fontSize:11,color:"#6B7280",marginTop:2}}>Your assigned plant</div>}
+                      {closedRec&&<div style={{fontSize:11,color:"#92400E",marginTop:2,fontWeight:600}}>🔒 Closed today — dishes will be for tomorrow</div>}
                     </div>
                     {orderPlant===p&&<span style={{color:PURPLE,fontSize:18}}>✓</span>}
                   </button>
-                ))}
+                  );
+                })}
               </div>
+                );
+              })()}
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>{setShowPlantModal(false);setOrderPlant("");}} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
                 <button onClick={placeOrder} disabled={!orderPlant}
@@ -5216,8 +5258,11 @@ export default function KFCanteen() {
 
             {/* order toast */}
       {orderPlaced&&(
-        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:PURPLE,color:"#fff",padding:"12px 24px",borderRadius:12,fontSize:14,fontWeight:600,zIndex:200,display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 24px rgba(107,33,168,0.3)"}}>
-          <Icon name="check" size={16} color="#fff" /> Order placed successfully!
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:PURPLE,color:"#fff",padding:"12px 24px",borderRadius:12,fontSize:14,fontWeight:600,zIndex:200,display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 24px rgba(107,33,168,0.3)",maxWidth:360,textAlign:"center"}}>
+          <Icon name="check" size={16} color="#fff" />
+          {orderRolledOver
+            ? "Order placed — the canteen is already closed for today, so this is scheduled for tomorrow instead."
+            : "Order placed successfully!"}
         </div>
       )}
       <Footer offsetLeft={isDesktop?240:0} />
