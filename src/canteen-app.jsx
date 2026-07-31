@@ -212,6 +212,7 @@ export default function KFCanteen() {
   const [editCreditId, setEditCreditId] = useState(null);
   const [editCreditVal, setEditCreditVal] = useState("");
   const [personnelSearch, setPersonnelSearch] = useState("");
+  const [personnelTab, setPersonnelTab] = useState("registered"); // "registered" | "unregistered"
   const [editRoleId, setEditRoleId] = useState(null);
   const [editPlantId, setEditPlantId] = useState(null);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -3475,12 +3476,13 @@ export default function KFCanteen() {
     if(activeTab==="personnel") {
       const employees = users.filter(u=>u.isEmployee!==false&&u.role!=="superadmin");
       const outsideCustomers = users.filter(u=>u.isEmployee===false);
-      const unregistered = employees.filter(u=>!u.registered);
-      const registered = employees.filter(u=>u.registered);
-      const searchTerm = personnelSearch==="unregistered" ? "" : personnelSearch;
-      const filteredUsers = (personnelSearch==="unregistered"?unregistered:registered).filter(u=>
+      const byName = (a,b)=>a.name.localeCompare(b.name);
+      const unregistered = employees.filter(u=>!u.registered).sort(byName);
+      const registered = employees.filter(u=>u.registered).sort(byName);
+      const searchTerm = personnelSearch;
+      const filteredUsers = (personnelTab==="unregistered"?unregistered:registered).filter(u=>
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.username||"").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.plant||"").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.idNumber||"").toLowerCase().includes(searchTerm.toLowerCase())
       );
@@ -3861,7 +3863,7 @@ export default function KFCanteen() {
             <div style={{display:"flex",gap:8}}>
               <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
                 <Icon name="search" size={15} color="#9CA3AF" />
-                <input value={personnelSearch==="unregistered"?"":personnelSearch} onChange={e=>setPersonnelSearch(e.target.value)} placeholder="Search name, plant..."
+                <input value={personnelSearch} onChange={e=>setPersonnelSearch(e.target.value)} placeholder="Search name, plant..."
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
                 {personnelSearch&&<button onClick={()=>setPersonnelSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
               </div>
@@ -3876,24 +3878,24 @@ export default function KFCanteen() {
 
           {/* Tab pills */}
           <div style={{display:"flex",gap:4,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:4,marginBottom:16,width:"fit-content"}}>
-            <button onClick={()=>setPersonnelSearch("")} style={{padding:"7px 16px",borderRadius:7,border:"none",background:personnelSearch!=="unregistered"?PURPLE:"transparent",color:personnelSearch!=="unregistered"?"#fff":"#6B7280",fontWeight:personnelSearch!=="unregistered"?700:400,fontSize:13,cursor:"pointer"}}>
+            <button onClick={()=>{setPersonnelTab("registered");setPersonnelSearch("");}} style={{padding:"7px 16px",borderRadius:7,border:"none",background:personnelTab!=="unregistered"?PURPLE:"transparent",color:personnelTab!=="unregistered"?"#fff":"#6B7280",fontWeight:personnelTab!=="unregistered"?700:400,fontSize:13,cursor:"pointer"}}>
               Registered ({registered.length})
             </button>
-            <button onClick={()=>setPersonnelSearch("unregistered")} style={{padding:"7px 16px",borderRadius:7,border:"none",background:personnelSearch==="unregistered"?"#EF4444":"transparent",color:personnelSearch==="unregistered"?"#fff":"#6B7280",fontWeight:personnelSearch==="unregistered"?700:400,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>{setPersonnelTab("unregistered");setPersonnelSearch("");}} style={{padding:"7px 16px",borderRadius:7,border:"none",background:personnelTab==="unregistered"?"#EF4444":"transparent",color:personnelTab==="unregistered"?"#fff":"#6B7280",fontWeight:personnelTab==="unregistered"?700:400,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
               Unregistered ({unregistered.length})
               {unregistered.length>0&&<span style={{background:"#EF4444",color:"#fff",borderRadius:"50%",width:18,height:18,fontSize:10,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{unregistered.length}</span>}
             </button>
           </div>
 
           {/* Unregistered employees notice */}
-          {personnelSearch==="unregistered"&&unregistered.length>0&&(
+          {personnelTab==="unregistered"&&unregistered.length>0&&(
             <div style={{background:"#FEF3C7",borderRadius:10,border:"1px solid #FCD34D",padding:"12px 16px",marginBottom:16,fontSize:13,color:"#92400E",display:"flex",alignItems:"center",gap:10}}>
               ⚠️ These employees have been added but haven't registered yet. Ask them to register using their name.
             </div>
           )}
 
           {/* Bulk selection bar */}
-          {personnelSearch==="unregistered"&&selectedUnregisteredIds.length>0&&(
+          {personnelTab==="unregistered"&&selectedUnregisteredIds.length>0&&(
             <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <span><strong>{selectedUnregisteredIds.length}</strong> employee{selectedUnregisteredIds.length>1?"s":""} selected</span>
               <div style={{display:"flex",gap:8}}>
@@ -3952,7 +3954,7 @@ export default function KFCanteen() {
           )}
 
           {/* Bulk selection bar — Registered tab */}
-          {personnelSearch!=="unregistered"&&selectedRegisteredIds.length>0&&(
+          {personnelTab!=="unregistered"&&selectedRegisteredIds.length>0&&(
             <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:PURPLE}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                 <span><strong>{selectedRegisteredIds.length}</strong> employee{selectedRegisteredIds.length>1?"s":""} selected</span>
@@ -4019,23 +4021,23 @@ export default function KFCanteen() {
                 <tr style={{background:"#F9FAFB"}}>
                   <th style={{padding:"11px 14px",width:36}}>
                     <input type="checkbox"
-                      checked={filteredUsers.length>0&&filteredUsers.every(u=>(personnelSearch==="unregistered"?selectedUnregisteredIds:selectedRegisteredIds).includes(u.id))}
+                      checked={filteredUsers.length>0&&filteredUsers.every(u=>(personnelTab==="unregistered"?selectedUnregisteredIds:selectedRegisteredIds).includes(u.id))}
                       onChange={e=>{
-                        const setSel = personnelSearch==="unregistered" ? setSelectedUnregisteredIds : setSelectedRegisteredIds;
+                        const setSel = personnelTab==="unregistered" ? setSelectedUnregisteredIds : setSelectedRegisteredIds;
                         if(e.target.checked) setSel(prev=>Array.from(new Set([...prev,...filteredUsers.map(u=>u.id)])));
                         else setSel(prev=>prev.filter(id=>!filteredUsers.some(u=>u.id===id)));
                       }}
                       style={{width:15,height:15,cursor:"pointer"}} />
                   </th>
-                  {personnelSearch==="unregistered"
+                  {personnelTab==="unregistered"
                     ? ["ID No.","Name","Department","Company","Plant","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
                     : ["ID No.","Name","Role","Credit Limit","Balance","Actions","Company","Plant","Department","Phone","Username"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
                   }
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length===0&&<tr><td colSpan={personnelSearch==="unregistered"?8:12} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
-                {personnelSearch==="unregistered" ? filteredUsers.map(u=>(
+                {filteredUsers.length===0&&<tr><td colSpan={personnelTab==="unregistered"?8:12} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
+                {personnelTab==="unregistered" ? filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                     <td style={{padding:"12px 14px"}}>
                       <input type="checkbox" checked={selectedUnregisteredIds.includes(u.id)}
