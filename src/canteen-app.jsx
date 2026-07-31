@@ -220,7 +220,6 @@ export default function KFCanteen() {
   const [importError, setImportError] = useState("");
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importProgress, setImportProgress] = useState({done:0, total:0});
-  const [importCreditLimit, setImportCreditLimit] = useState("500");
   const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF Main"}]});
   const [addEmployeeError, setAddEmployeeError] = useState("");
   const [addEmployeeSubmitting, setAddEmployeeSubmitting] = useState(false);
@@ -3547,7 +3546,7 @@ export default function KFCanteen() {
                         {col:"POSITION", desc:"Job title", req:false},
                         {col:"EMPLOYEE NAME", desc:"Full name of employee", req:true},
                         {col:"COMPANY", desc:"Employer company as shown in HR records", req:false},
-                        {col:"CREDIT LIMIT", desc:"Per-employee limit — overrides the default below if filled in", req:false},
+                        {col:"CREDIT LIMIT", desc:"Per-employee credit limit and starting balance", req:true},
                       ].map(c=>(
                         <div key={c.col} style={{display:"flex",gap:6,alignItems:"flex-start"}}>
                           <span style={{fontFamily:"monospace",background:"#E5E7EB",padding:"1px 6px",borderRadius:4,fontSize:11,flexShrink:0,color:"#374151"}}>{c.col}</span>
@@ -3556,17 +3555,6 @@ export default function KFCanteen() {
                       ))}
                     </div>
                     <div style={{marginTop:8,fontSize:11,color:"#9CA3AF"}}>* Required fields. Company is informational only — it does not set the Plant. Plant (KF Main, Colortree, KF II (Global)) is assigned by an admin afterwards in the Employees table. Rows with an Employee No. that already exists in the system are skipped automatically to avoid duplicates.</div>
-                  </div>
-
-                  {/* Credit limit for imported employees */}
-                  <div style={{marginBottom:18}}>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Default Credit Limit</label>
-                    <div style={{position:"relative",maxWidth:200}}>
-                      <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#9CA3AF",fontWeight:600}}>₱</span>
-                      <input value={importCreditLimit} onChange={e=>setImportCreditLimit(e.target.value)} type="number" min="0" placeholder="500"
-                        style={{width:"100%",fontSize:14,padding:"9px 12px 9px 26px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                    </div>
-                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Used as both credit limit and starting balance for any employee whose row doesn't have its own CREDIT LIMIT column filled in.</div>
                   </div>
 
                   {/* Upload area */}
@@ -3613,6 +3601,7 @@ export default function KFCanteen() {
                                 var rowCreditLimit = creditLimitRaw!==""&&!isNaN(parseFloat(creditLimitRaw)) ? parseFloat(creditLimitRaw) : null;
 
                                 if(!idNum||!name){ errors.push("Row "+(i+1)+": missing Employee No. or Employee Name"); continue; }
+                                if(rowCreditLimit==null){ errors.push("Row "+(i+1)+": missing or invalid CREDIT LIMIT"); continue; }
                                 if(seenIds[idNum]){ skippedDup++; continue; }
                                 if(users.some(function(u){ return (u.idNumber||"").trim()===idNum; })){ skippedDup++; continue; }
 
@@ -3669,7 +3658,7 @@ export default function KFCanteen() {
                                 <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.department||"—"}</td>
                                 <td style={{padding:"7px 12px",color:"#6B7280"}}>{e.position||"—"}</td>
                                 <td style={{padding:"7px 12px",color:PURPLE,fontWeight:500}}>{e.company||"—"}</td>
-                                <td style={{padding:"7px 12px",color:e.creditLimit!=null?"#059669":"#9CA3AF"}}>{e.creditLimit!=null?"₱"+e.creditLimit.toLocaleString():"(default)"}</td>
+                                <td style={{padding:"7px 12px",color:"#059669"}}>₱{e.creditLimit.toLocaleString()}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -3708,9 +3697,8 @@ export default function KFCanteen() {
                     var toImport = importPreview.filter(function(emp) {
                       return !users.some(function(u){ return (u.idNumber||"").trim()===emp.idNumber; });
                     });
-                    var defaultCreditLimit = parseFloat(importCreditLimit)||0;
                     var newUsers = toImport.map(function(emp) {
-                      var creditLimit = emp.creditLimit!=null ? emp.creditLimit : defaultCreditLimit;
+                      var creditLimit = emp.creditLimit;
                       return {
                         id:"u"+Date.now()+Math.random(),
                         username:null,password:"",
@@ -3880,7 +3868,7 @@ export default function KFCanteen() {
               <button onClick={()=>setShowAddEmployeeModal(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 <Icon name="plus" size={14} color="#fff" /> Add Employee
               </button>
-              <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");setImportCreditLimit("500");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                 📥 Import Excel
               </button>
             </div>
