@@ -215,13 +215,18 @@ export default function KFCanteen() {
   const [personnelTab, setPersonnelTab] = useState("registered"); // "registered" | "unregistered"
   const [editRoleId, setEditRoleId] = useState(null);
   const [editPlantId, setEditPlantId] = useState(null);
+  const [editEmployeeTarget, setEditEmployeeTarget] = useState(null); // user object being edited, or null
+  const [editEmployeeForm, setEditEmployeeForm] = useState({name:"",idNumber:"",department:"",position:"",company:"",phone:""});
+  const [editEmployeeSubmitting, setEditEmployeeSubmitting] = useState(false);
+  const [editEmployeeError, setEditEmployeeError] = useState("");
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState([]);
   const [importError, setImportError] = useState("");
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importProgress, setImportProgress] = useState({done:0, total:0});
-  const [newEmployee, setNewEmployee] = useState({name:"", plant:"KF Main", idNumber:"", rows:[{id:1, idNumber:"", name:"", plant:"KF Main"}]});
+  const emptyEmployeeRow = () => ({id:Date.now()+Math.random(), idNumber:"", name:"", department:"", position:"", company:"", creditLimit:"", plant:"KF Main"});
+  const [newEmployee, setNewEmployee] = useState({rows:[{id:1, idNumber:"", name:"", department:"", position:"", company:"", creditLimit:"", plant:"KF Main"}]});
   const [addEmployeeError, setAddEmployeeError] = useState("");
   const [addEmployeeSubmitting, setAddEmployeeSubmitting] = useState(false);
   const [selectedUnregisteredIds, setSelectedUnregisteredIds] = useState([]);
@@ -1167,7 +1172,7 @@ export default function KFCanteen() {
               </div>
               <div style={{padding:"26px 22px",textAlign:"center"}}>
                 <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:22,lineHeight:1.5}}>
-                  Are you an employee of<br/><span style={{color:PURPLE}}>Kou Fu Color Printing Corporation</span>?
+                  Are you an employee of<br/><span style={{color:PURPLE}}>Kou Fu Color Printing Corporation</span> or <span style={{color:PURPLE}}>Colortree Label Corporation</span>?
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button onClick={()=>{setRegisterType("outside");setShowRegister(true);setShowEmployeeCheck(false);}}
@@ -3763,49 +3768,67 @@ export default function KFCanteen() {
                     <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Employees</div>
                     <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Fill in each row — click "+ Add Another" to add more</div>
                   </div>
-                  <button onClick={()=>{setShowAddEmployeeModal(false);setNewEmployee({name:"",plant:"KF Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]});}}
+                  <button onClick={()=>{setShowAddEmployeeModal(false);setNewEmployee({rows:[emptyEmployeeRow()]});}}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
                 </div>
 
                 {/* Scrollable rows */}
                 <div style={{overflowY:"auto",flex:1,padding:"16px 22px"}}>
-                  {/* Column headers */}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1.4fr 32px",gap:8,marginBottom:8}}>
-                    {["ID Number","Full Name","Plant",""].map(h=>(
-                      <div key={h} style={{fontSize:11,fontWeight:700,color:"#6B7280",textTransform:"uppercase",letterSpacing:"0.4px"}}>{h}</div>
-                    ))}
-                  </div>
-
-                  {(newEmployee.rows||[{id:1,idNumber:"",name:"",plant:"KF Main"}]).map((row,idx)=>(
-                    <div key={row.id} style={{display:"grid",gridTemplateColumns:"1fr 2fr 1.4fr 32px",gap:8,marginBottom:10,alignItems:"center"}}>
-                      {/* ID Number */}
-                      <input value={row.idNumber}
-                        onChange={e=>{const v=e.target.value.toUpperCase(); setNewEmployee(p=>({...p,rows:p.rows.map(r=>r.id===row.id?{...r,idNumber:v}:r)}));}}
-                        placeholder="e.g. KF2301005"
-                        style={{padding:"9px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",width:"100%",boxSizing:"border-box"}} />
-                      {/* Full Name */}
-                      <input value={row.name}
-                        onChange={e=>{const v=e.target.value; setNewEmployee(p=>({...p,rows:p.rows.map(r=>r.id===row.id?{...r,name:v}:r)}));}}
-                        onBlur={e=>{const v=toProperCase(e.target.value); setNewEmployee(p=>({...p,rows:p.rows.map(r=>r.id===row.id?{...r,name:v}:r)}));}}
-                        placeholder="e.g. Juan dela Cruz"
-                        style={{padding:"9px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",width:"100%",boxSizing:"border-box"}} />
-                      {/* Plant selector */}
-                      <select value={row.plant}
-                        onChange={e=>{const v=e.target.value; setNewEmployee(p=>({...p,rows:p.rows.map(r=>r.id===row.id?{...r,plant:v}:r)}));}}
-                        style={{padding:"9px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",background:"#fff",cursor:"pointer"}}>
-                        {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
-                      </select>
-                      {/* Remove row */}
-                      <button onClick={()=>setNewEmployee(p=>({...p,rows:p.rows.filter(r=>r.id!==row.id)}))}
-                        disabled={(newEmployee.rows||[]).length<=1}
-                        style={{width:32,height:32,borderRadius:8,border:"none",background:(newEmployee.rows||[]).length<=1?"#F3F4F6":"#FEE2E2",color:(newEmployee.rows||[]).length<=1?"#D1D5DB":"#EF4444",cursor:(newEmployee.rows||[]).length<=1?"not-allowed":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        ×
-                      </button>
+                  {(newEmployee.rows||[emptyEmployeeRow()]).map((row,idx)=>{
+                    const setField = (field,v)=>setNewEmployee(p=>({...p,rows:p.rows.map(r=>r.id===row.id?{...r,[field]:v}:r)}));
+                    const fieldStyle = {padding:"9px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",width:"100%",boxSizing:"border-box"};
+                    const labelStyle = {fontSize:11,fontWeight:600,color:"#6B7280",display:"block",marginBottom:4};
+                    return (
+                    <div key={row.id} style={{border:"1px solid #E5E7EB",borderRadius:10,padding:"14px",marginBottom:12,position:"relative",background:"#F9FAFB"}}>
+                      {(newEmployee.rows||[]).length>1&&(
+                        <button onClick={()=>setNewEmployee(p=>({...p,rows:p.rows.filter(r=>r.id!==row.id)}))}
+                          style={{position:"absolute",top:10,right:10,width:26,height:26,borderRadius:7,border:"none",background:"#FEE2E2",color:"#EF4444",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          ×
+                        </button>
+                      )}
+                      <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",marginBottom:10,letterSpacing:"0.4px"}}>EMPLOYEE {idx+1}</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                        <div>
+                          <label style={labelStyle}>ID Number</label>
+                          <input value={row.idNumber} onChange={e=>setField("idNumber",e.target.value.toUpperCase())} placeholder="e.g. KF2301005" style={fieldStyle} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Full Name</label>
+                          <input value={row.name} onChange={e=>setField("name",e.target.value)} onBlur={e=>setField("name",toProperCase(e.target.value))} placeholder="e.g. Juan dela Cruz" style={fieldStyle} />
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                        <div>
+                          <label style={labelStyle}>Department</label>
+                          <input value={row.department} onChange={e=>setField("department",e.target.value)} placeholder="e.g. Accounting" style={fieldStyle} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Position</label>
+                          <input value={row.position} onChange={e=>setField("position",e.target.value)} placeholder="e.g. Staff" style={fieldStyle} />
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                        <div>
+                          <label style={labelStyle}>Company</label>
+                          <input value={row.company} onChange={e=>setField("company",e.target.value)} placeholder="e.g. Kou Fu Color Printing" style={fieldStyle} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Credit Limit</label>
+                          <input value={row.creditLimit} onChange={e=>setField("creditLimit",e.target.value)} type="number" min="0" placeholder="1000" style={fieldStyle} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Plant</label>
+                          <select value={row.plant} onChange={e=>setField("plant",e.target.value)} style={{...fieldStyle,background:"#fff",cursor:"pointer"}}>
+                            {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </div>
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Add another row */}
-                  <button onClick={()=>setNewEmployee(p=>({...p,rows:[...(p.rows||[]),{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]}))}
+                  <button onClick={()=>setNewEmployee(p=>({...p,rows:[...(p.rows||[]),emptyEmployeeRow()]}))}
                     style={{width:"100%",padding:"10px",border:"1.5px dashed #D1D5DB",borderRadius:9,background:"#F9FAFB",color:"#6B7280",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:4}}>
                     <Icon name="plus" size={14} color="#6B7280" /> Add Another
                   </button>
@@ -3826,7 +3849,7 @@ export default function KFCanteen() {
                     </div>
                   )}
                   <div style={{display:"flex",gap:10}}>
-                    <button onClick={()=>{setShowAddEmployeeModal(false);setAddEmployeeError("");setNewEmployee({name:"",plant:"KF Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]});}}
+                    <button onClick={()=>{setShowAddEmployeeModal(false);setAddEmployeeError("");setNewEmployee({rows:[emptyEmployeeRow()]});}}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
                     <button disabled={!(newEmployee.rows||[]).some(r=>r.name.trim())||addEmployeeSubmitting} onClick={async ()=>{
                       var validRows = (newEmployee.rows||[]).filter(r=>r.name.trim());
@@ -3834,7 +3857,8 @@ export default function KFCanteen() {
                       var newUsers = validRows.map(r=>{
                         var name=toProperCase(r.name);
                         var initials=name.split(" ").filter(Boolean).map(w=>w[0]).join("").toUpperCase().slice(0,2);
-                        return {id:"u"+Date.now()+Math.random(),username:null,password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),phone:"",creditLimit:1000,creditBalance:1000,registered:false,isEmployee:true};
+                        var creditLimit = (r.creditLimit!==""&&!isNaN(parseFloat(r.creditLimit))) ? parseFloat(r.creditLimit) : 1000;
+                        return {id:"u"+Date.now()+Math.random(),username:null,password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),department:r.department.trim(),position:r.position.trim(),company:r.company.trim(),phone:"",creditLimit,creditBalance:creditLimit,registered:false,isEmployee:true};
                       });
                       setAddEmployeeSubmitting(true);
                       setAddEmployeeError("");
@@ -3846,7 +3870,7 @@ export default function KFCanteen() {
                       }
                       setUsers(prev=>[...prev,...newUsers]);
                       setShowAddEmployeeModal(false);
-                      setNewEmployee({name:"",plant:"KF Main",idNumber:"",rows:[{id:Date.now(),idNumber:"",name:"",plant:"KF Main"}]});
+                      setNewEmployee({rows:[emptyEmployeeRow()]});
                     }} style={{flex:2,background:((newEmployee.rows||[]).some(r=>r.name.trim())&&!addEmployeeSubmitting)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:((newEmployee.rows||[]).some(r=>r.name.trim())&&!addEmployeeSubmitting)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
                       {addEmployeeSubmitting?"Saving...":"Save All Employees"}
                     </button>
@@ -3855,6 +3879,82 @@ export default function KFCanteen() {
               </div>
             </div>
           )}
+
+          {/* Edit Employee Modal */}
+          {editEmployeeTarget&&(()=>{
+            const fieldStyle = {padding:"9px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",width:"100%",boxSizing:"border-box"};
+            const labelStyle = {fontSize:11,fontWeight:600,color:"#6B7280",display:"block",marginBottom:4};
+            return (
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:480,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Edit Employee</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>{editEmployeeTarget.name}</div>
+                  </div>
+                  <button disabled={editEmployeeSubmitting} onClick={()=>setEditEmployeeTarget(null)}
+                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:editEmployeeSubmitting?"not-allowed":"pointer",color:"#fff",fontSize:18}}>×</button>
+                </div>
+                <div style={{padding:"22px"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                    <div>
+                      <label style={labelStyle}>Full Name</label>
+                      <input value={editEmployeeForm.name} onChange={e=>setEditEmployeeForm(p=>({...p,name:e.target.value}))} style={fieldStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>ID Number</label>
+                      <input value={editEmployeeForm.idNumber} onChange={e=>setEditEmployeeForm(p=>({...p,idNumber:e.target.value.toUpperCase()}))} style={fieldStyle} />
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                    <div>
+                      <label style={labelStyle}>Department</label>
+                      <input value={editEmployeeForm.department} onChange={e=>setEditEmployeeForm(p=>({...p,department:e.target.value}))} style={fieldStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Position</label>
+                      <input value={editEmployeeForm.position} onChange={e=>setEditEmployeeForm(p=>({...p,position:e.target.value}))} style={fieldStyle} />
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+                    <div>
+                      <label style={labelStyle}>Company</label>
+                      <input value={editEmployeeForm.company} onChange={e=>setEditEmployeeForm(p=>({...p,company:e.target.value}))} style={fieldStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Phone</label>
+                      <input value={editEmployeeForm.phone} onChange={e=>setEditEmployeeForm(p=>({...p,phone:e.target.value}))} style={fieldStyle} />
+                    </div>
+                  </div>
+                  {editEmployeeError&&(
+                    <div style={{background:"#FEE2E2",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#991B1B"}}>⚠️ {editEmployeeError}</div>
+                  )}
+                  <div style={{display:"flex",gap:10}}>
+                    <button disabled={editEmployeeSubmitting} onClick={()=>setEditEmployeeTarget(null)}
+                      style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:editEmployeeSubmitting?"not-allowed":"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                    <button disabled={!editEmployeeForm.name.trim()||editEmployeeSubmitting} onClick={async ()=>{
+                      const name = toProperCase(editEmployeeForm.name.trim());
+                      if(!name){ setEditEmployeeError("Name is required."); return; }
+                      const updates = { name, idNumber:editEmployeeForm.idNumber.trim(), department:editEmployeeForm.department.trim(), position:editEmployeeForm.position.trim(), company:editEmployeeForm.company.trim(), phone:editEmployeeForm.phone.trim() };
+                      setEditEmployeeSubmitting(true);
+                      setEditEmployeeError("");
+                      const result = await dbUpdateUser(editEmployeeTarget.id, updates);
+                      setEditEmployeeSubmitting(false);
+                      if(result&&result.success===false){
+                        setEditEmployeeError("Could not save — "+(result.error&&result.error.message?result.error.message:"please try again."));
+                        return;
+                      }
+                      setUsers(prev=>prev.map(uu=>uu.id===editEmployeeTarget.id?{...uu,...updates}:uu));
+                      setEditEmployeeTarget(null);
+                    }} style={{flex:2,background:(editEmployeeForm.name.trim()&&!editEmployeeSubmitting)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(editEmployeeForm.name.trim()&&!editEmployeeSubmitting)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                      {editEmployeeSubmitting?"Saving...":"Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            );
+          })()}
 
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
@@ -4051,10 +4151,14 @@ export default function KFCanteen() {
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:"#FEE2E2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#EF4444",flexShrink:0}}>{u.avatar}</div>
-                        <div>
+                        <div style={{flex:1,minWidth:0}}>
                           <div style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</div>
                           {u.position&&<div style={{fontSize:11,color:"#9CA3AF"}}>{u.position}</div>}
                         </div>
+                        <button onClick={()=>{setEditEmployeeTarget(u);setEditEmployeeForm({name:u.name||"",idNumber:u.idNumber||"",department:u.department||"",position:u.position||"",company:u.company||"",phone:u.phone||""});setEditEmployeeError("");}}
+                          style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2,flexShrink:0}}>
+                          <Icon name="edit" size={12} color="#9CA3AF" />
+                        </button>
                       </div>
                     </td>
                     <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
@@ -4099,10 +4203,14 @@ export default function KFCanteen() {
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>{u.avatar}</div>
-                        <div>
+                        <div style={{flex:1,minWidth:0}}>
                           <div style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</div>
                           {u.position&&<div style={{fontSize:11,color:"#9CA3AF"}}>{u.position}</div>}
                         </div>
+                        <button onClick={()=>{setEditEmployeeTarget(u);setEditEmployeeForm({name:u.name||"",idNumber:u.idNumber||"",department:u.department||"",position:u.position||"",company:u.company||"",phone:u.phone||""});setEditEmployeeError("");}}
+                          style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2,flexShrink:0}}>
+                          <Icon name="edit" size={12} color="#9CA3AF" />
+                        </button>
                       </div>
                     </td>
                     <td style={{padding:"12px 14px"}}>
