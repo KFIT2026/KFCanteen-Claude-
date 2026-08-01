@@ -66,6 +66,34 @@ const TODAY = getDateKey(TODAY_DATE);
 const MEAL_CATS = ["ALL","BREAKFAST","LUNCH","SNACK"];
 
 
+// Suggestions/replies are blocked (not just flagged) if they match this list.
+// Scope is deliberately narrow: strong profanity and sexual/vulgar terms only
+// -- mild insults or blunt-but-clean criticism ("this food is bad", "ang
+// panget") must still go through, or people stop giving honest feedback.
+// Word-boundary matching (not substring) avoids flagging innocent words that
+// happen to contain a banned string. This is a wordlist, not a language
+// model -- it won't catch every spacing/leetspeak evasion, but it covers the
+// common, obvious cases in both English and Filipino/Tagalog.
+const PROFANITY_TERMS = [
+  // English -- profanity
+  "fuck","fucking","fucked","fucker","motherfucker","shit","bullshit","bitch",
+  "asshole","cunt","dick","pussy","cock","whore","slut","bastard",
+  "nigger","nigga","faggot","fag",
+  // English -- sexual/vulgar
+  "porn","blowjob","handjob","orgasm","penis","vagina","boobs","titties",
+  "rape","rapist","dildo","masturbate","masturbation","cum",
+  // Filipino/Tagalog -- profanity
+  "putangina","putang ina","tangina","puta","gago","gaga","tarantado",
+  "punyeta","hinayupak","pakyu","pakshet","hayop ka",
+  // Filipino/Tagalog -- sexual/vulgar
+  "kantot","kantutan","iyot","titi","puke","pekpek","burat","jakol",
+];
+const PROFANITY_REGEX = new RegExp(
+  "\\b(?:" + PROFANITY_TERMS.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|") + ")\\b",
+  "i"
+);
+const containsProfanity = (text) => PROFANITY_REGEX.test(text);
+
 const PLANTS = ["KF Main","Colortree","KF II (Global)"];
 
 // dish serving units — a dish's serving size can be measured by weight,
@@ -398,9 +426,11 @@ export default function KFCanteen() {
   const [suggestions, setSuggestions] = useState([]);
   useEffect(() => { fetchSuggestions().then(setSuggestions); }, []);
   const [newSuggestionText, setNewSuggestionText] = useState("");
+  const [suggestionError, setSuggestionError] = useState("");
   const [suggestionReplies, setSuggestionReplies] = useState([]);
   useEffect(() => { fetchSuggestionReplies().then(setSuggestionReplies); }, []);
   const [replyDrafts, setReplyDrafts] = useState({}); // { [suggestionId]: draftText }
+  const [replyErrors, setReplyErrors] = useState({}); // { [suggestionId]: errorText }
 
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closePlant, setClosePlant] = useState("");
@@ -1229,18 +1259,22 @@ export default function KFCanteen() {
   const submitSuggestion = () => {
     const content = newSuggestionText.trim();
     if(!content) return;
+    if(containsProfanity(content)){ setSuggestionError("Your suggestion contains language that isn't allowed here. Please rephrase and try again."); return; }
     const entry = { id:"sug"+Date.now()+Math.random().toString(36).slice(2), userId:currentUser.id, userName:currentUser.name, content, createdAt:new Date().toISOString() };
     setSuggestions(prev=>[entry, ...prev]);
     dbInsertSuggestion(entry);
     setNewSuggestionText("");
+    setSuggestionError("");
   };
   const submitSuggestionReply = (suggestionId) => {
     const content = (replyDrafts[suggestionId]||"").trim();
     if(!content) return;
+    if(containsProfanity(content)){ setReplyErrors(prev=>({...prev, [suggestionId]:"This reply contains language that isn't allowed here. Please rephrase and try again."})); return; }
     const entry = { id:"sr"+Date.now()+Math.random().toString(36).slice(2), suggestionId, authorId:currentUser.id, authorName:currentUser.name, authorRole:role, content, createdAt:new Date().toISOString() };
     setSuggestionReplies(prev=>[...prev, entry]);
     dbInsertSuggestionReply(entry);
     setReplyDrafts(prev=>({...prev, [suggestionId]:""}));
+    setReplyErrors(prev=>({...prev, [suggestionId]:""}));
   };
   // Author-only delete. Deleting a suggestion also drops its replies — the DB
   // enforces this via ON DELETE CASCADE, so local state just mirrors it.
@@ -5597,6 +5631,7 @@ export default function KFCanteen() {
       const Thread = ({s}) => {
         const replies = suggestionReplies.filter(r=>r.suggestionId===s.id);
         const draft = replyDrafts[s.id]||"";
+        const replyError = replyErrors[s.id]||"";
         return (
           <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
             {replies.map(r=>{
@@ -5613,15 +5648,16 @@ export default function KFCanteen() {
               );
             })}
             <div style={{display:"flex",gap:6,marginTop:6}}>
-              <input value={draft} onChange={e=>setReplyDrafts(prev=>({...prev,[s.id]:e.target.value}))}
+              <input value={draft} onChange={e=>{setReplyDrafts(prev=>({...prev,[s.id]:e.target.value})); if(replyErrors[s.id]) setReplyErrors(prev=>({...prev,[s.id]:""}));}}
                 onKeyDown={e=>{if(e.key==="Enter"&&draft.trim()) submitSuggestionReply(s.id);}}
                 placeholder="Write a reply..."
-                style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:7,border:"1.5px solid #E5E7EB",outline:"none",boxSizing:"border-box"}} />
+                style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:7,border:replyError?"1.5px solid #EF4444":"1.5px solid #E5E7EB",outline:"none",boxSizing:"border-box"}} />
               <button onClick={()=>submitSuggestionReply(s.id)} disabled={!draft.trim()}
                 style={{background:draft.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:7,padding:"7px 14px",cursor:draft.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
                 Reply
               </button>
             </div>
+            {replyError&&<div style={{marginTop:6,fontSize:11,color:"#EF4444",fontWeight:600}}>⚠️ {replyError}</div>}
           </div>
         );
       };
@@ -5634,8 +5670,9 @@ export default function KFCanteen() {
 
           <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px",marginBottom:20}}>
             <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Got an idea or feedback? Tell us — it's read anonymously unless it needs to be looked into.</label>
-            <textarea value={newSuggestionText} onChange={e=>setNewSuggestionText(e.target.value)} placeholder="Type your suggestion..." rows={4}
-              style={{width:"100%",fontSize:14,padding:"12px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",resize:"vertical",fontFamily:"inherit"}} />
+            <textarea value={newSuggestionText} onChange={e=>{setNewSuggestionText(e.target.value); if(suggestionError) setSuggestionError("");}} placeholder="Type your suggestion..." rows={4}
+              style={{width:"100%",fontSize:14,padding:"12px 14px",borderRadius:10,border:suggestionError?"1.5px solid #EF4444":"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",resize:"vertical",fontFamily:"inherit"}} />
+            {suggestionError&&<div style={{marginTop:8,fontSize:12,color:"#EF4444",fontWeight:600}}>⚠️ {suggestionError}</div>}
             <button onClick={submitSuggestion} disabled={!newSuggestionText.trim()}
               style={{marginTop:10,background:newSuggestionText.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"10px 20px",cursor:newSuggestionText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700}}>
               Submit Suggestion
