@@ -159,13 +159,18 @@ const fixedMenuItemFromDb = (r) => ({
   dishId: r.dish_id || null,
 });
 
+// Short Order items can optionally have size/price variants (Visitor Menu
+// stays single-price, so it keeps using the shared fixedMenuItem* mapper).
+const shortOrderItemToDb = (m) => ({ ...fixedMenuItemToDb(m), sizes: m.sizes||[] });
+const shortOrderItemFromDb = (r) => ({ ...fixedMenuItemFromDb(r), sizes: r.sizes||[] });
+
 export const fetchShortOrderItems = async () => {
   const { data, error } = await supabase.from("short_order_items").select("*");
   if (error) { console.error("fetchShortOrderItems failed:", error); return []; }
-  return data.map(fixedMenuItemFromDb);
+  return data.map(shortOrderItemFromDb);
 };
 export const dbInsertShortOrderItem = async (item) => {
-  const { error } = await supabase.from("short_order_items").insert(fixedMenuItemToDb(item));
+  const { error } = await supabase.from("short_order_items").insert(shortOrderItemToDb(item));
   if (error) console.error("dbInsertShortOrderItem failed:", error);
 };
 export const dbUpdateShortOrderItem = async (id, patch) => {
@@ -179,6 +184,7 @@ export const dbUpdateShortOrderItem = async (id, patch) => {
   if ("grams" in patch) dbPatch.grams = patch.grams;
   if ("servingUnit" in patch) dbPatch.serving_unit = patch.servingUnit;
   if ("dishId" in patch) dbPatch.dish_id = patch.dishId;
+  if ("sizes" in patch) dbPatch.sizes = patch.sizes;
   const { error } = await supabase.from("short_order_items").update(dbPatch).eq("id", id);
   if (error) console.error("dbUpdateShortOrderItem failed:", error);
 };
@@ -571,6 +577,13 @@ export const dbInsertSuggestion = async (entry) => {
   if (error) console.error("dbInsertSuggestion failed:", error);
 };
 
+// suggestion_replies has ON DELETE CASCADE on suggestion_id, so deleting a
+// suggestion also removes its replies at the DB level.
+export const dbDeleteSuggestion = async (id) => {
+  const { error } = await supabase.from("suggestions").delete().eq("id", id);
+  if (error) console.error("dbDeleteSuggestion failed:", error);
+};
+
 /* ── suggestion_replies table ── */
 
 const suggestionReplyToDb = (r) => ({
@@ -591,4 +604,9 @@ export const fetchSuggestionReplies = async () => {
 export const dbInsertSuggestionReply = async (entry) => {
   const { error } = await supabase.from("suggestion_replies").insert(suggestionReplyToDb(entry));
   if (error) console.error("dbInsertSuggestionReply failed:", error);
+};
+
+export const dbDeleteSuggestionReply = async (id) => {
+  const { error } = await supabase.from("suggestion_replies").delete().eq("id", id);
+  if (error) console.error("dbDeleteSuggestionReply failed:", error);
 };

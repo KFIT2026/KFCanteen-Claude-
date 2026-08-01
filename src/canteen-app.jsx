@@ -11,8 +11,8 @@ import {
   fetchRawMaterialLog, dbInsertRawMaterialLog,
   fetchPlantCloses, dbInsertPlantClose, dbReopenPlantClose,
   fetchExcessDecisions, dbInsertExcessDecision,
-  fetchSuggestions, dbInsertSuggestion,
-  fetchSuggestionReplies, dbInsertSuggestionReply,
+  fetchSuggestions, dbInsertSuggestion, dbDeleteSuggestion,
+  fetchSuggestionReplies, dbInsertSuggestionReply, dbDeleteSuggestionReply,
   fetchShortOrderItems, dbInsertShortOrderItem, dbUpdateShortOrderItem, dbDeleteShortOrderItem,
   fetchVisitorMenuItems, dbInsertVisitorMenuItem, dbUpdateVisitorMenuItem, dbDeleteVisitorMenuItem,
 } from "./db";
@@ -275,9 +275,10 @@ export default function KFCanteen() {
   const [orderPlant, setOrderPlant] = useState("");
 
   // remarks + drink-upsell prompt shared by Short Order and Visitor Menu
-  const [addOptionsItem, setAddOptionsItem] = useState(null); // {item, onConfirm(remarks, drinks)}
+  const [addOptionsItem, setAddOptionsItem] = useState(null); // {item, onConfirm(remarks, drinks, size)}
   const [addOptionsRemarks, setAddOptionsRemarks] = useState("");
   const [addOptionsDrinks, setAddOptionsDrinks] = useState({}); // {productId: qty}
+  const [addOptionsSize, setAddOptionsSize] = useState(null); // {label, price} — required when item.sizes is non-empty
 
   // visitor menu (admin/staff-admin only, fixed menu, own inline checkout)
   const [visitorCart, setVisitorCart] = useState([]);
@@ -460,6 +461,10 @@ export default function KFCanteen() {
   const role = currentUser?.role;
   // superadmin has every admin permission, plus seeing who wrote a suggestion
   const isAdminLike = role==="admin"||role==="superadmin";
+  // Staff-Admin gets the same "All Suggestions" moderation view as Admin
+  // (anonymized submitter identity, can reply, counts toward the awaiting-reply
+  // badge) — just not the superadmin-only real-identity lookup.
+  const canModerateSuggestions = isAdminLike || role==="staff-admin";
 
   // derived from currently-loaded orders (not a hardcoded/session-local counter) so IDs
   // stay unique across page reloads and separate browser sessions — a fixed starting ref
@@ -747,11 +752,12 @@ export default function KFCanteen() {
     // items with remarks get their own cart line (unique key) rather than
     // merging into an existing entry, since different remarks on the same
     // dish shouldn't be silently combined into one note.
-    const key = item.id + (scheduledDate? "_"+scheduledDate.toDateString():"") + (remarks?"_r"+Date.now()+Math.random():"");
+    const sizeLabel = (extra&&extra.sizeLabel) || null;
+    const key = item.id + (scheduledDate? "_"+scheduledDate.toDateString():"") + (sizeLabel?"_sz"+sizeLabel:"") + (remarks?"_r"+Date.now()+Math.random():"");
     const ex = !remarks && prev.find(c=>c._key===key);
     if(ex) return prev.map(c=>c._key===key?{...c,qty:c.qty+addQty}:c);
     return [...prev,{...item, qty:addQty, buyPrice:item.buyPrice||null, _key:key,
-      scheduledDate: scheduledDate&&isFuture(scheduledDate)?scheduledDate:null, remarks, fixedMenu }];
+      scheduledDate: scheduledDate&&isFuture(scheduledDate)?scheduledDate:null, remarks, fixedMenu, sizeLabel }];
   });
   const updateQty = (key,delta) => setCart(prev=>prev.map(c=>c._key===key?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
   const removeFromCart = (key) => setCart(prev=>prev.filter(c=>c._key!==key));
@@ -828,7 +834,7 @@ export default function KFCanteen() {
     const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
       date: orderDate,
       plant: plant,
-      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null,remarks:c.remarks||null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null,remarks:c.remarks||null,size:c.sizeLabel||null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
       source: cart.some(c=>c.fixedMenu) ? "short-order" : undefined };
     setOrders(prev=>[order,...prev]);
     dbInsertOrder(order);
@@ -844,12 +850,13 @@ export default function KFCanteen() {
 
   /* ── shared remarks + drink-upsell prompt (Short Order & Visitor Menu) ── */
   const availableDrinks = otherProducts.filter(p=>(p.category||"").toLowerCase()==="drinks"&&p.available&&p.stock>0);
-  const openAddOptions = (item, onConfirm) => { setAddOptionsItem({item,onConfirm}); setAddOptionsRemarks(""); setAddOptionsDrinks({}); };
-  const closeAddOptions = () => { setAddOptionsItem(null); setAddOptionsRemarks(""); setAddOptionsDrinks({}); };
+  const openAddOptions = (item, onConfirm) => { setAddOptionsItem({item,onConfirm}); setAddOptionsRemarks(""); setAddOptionsDrinks({}); setAddOptionsSize(null); };
+  const closeAddOptions = () => { setAddOptionsItem(null); setAddOptionsRemarks(""); setAddOptionsDrinks({}); setAddOptionsSize(null); };
   const confirmAddOptions = () => {
     if(!addOptionsItem) return;
+    if(addOptionsItem.item.sizes&&addOptionsItem.item.sizes.length>0&&!addOptionsSize) return;
     const drinks = availableDrinks.filter(d=>(addOptionsDrinks[d.id]||0)>0).map(d=>({...d, qty:addOptionsDrinks[d.id]}));
-    addOptionsItem.onConfirm(addOptionsRemarks.trim()||null, drinks);
+    addOptionsItem.onConfirm(addOptionsRemarks.trim()||null, drinks, addOptionsSize);
     closeAddOptions();
   };
 
@@ -1015,7 +1022,7 @@ export default function KFCanteen() {
   }));
 
   /* ── SHORT ORDER items (Manage Short Order) ── */
-  const [newShortOrderItem, setNewShortOrderItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"" });
+  const [newShortOrderItem, setNewShortOrderItem] = useState({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", sizes:[] });
   const [showAddShortOrderItem, setShowAddShortOrderItem] = useState(false);
   const [shortOrderDragOver, setShortOrderDragOver] = useState(false);
   const shortOrderPhotoInputRef = useRef(null);
@@ -1026,11 +1033,15 @@ export default function KFCanteen() {
     reader.readAsDataURL(file);
   }, []);
   const addShortOrderItem = () => {
-    if(!newShortOrderItem.name||!newShortOrderItem.price||parseFloat(newShortOrderItem.price)<=0) return;
-    const item = { id:"so"+Date.now(), name:newShortOrderItem.name, price:parseFloat(newShortOrderItem.price), available:true, img:newShortOrderItem.photo||newShortOrderItem.img||"🍽️", isPhoto:!!newShortOrderItem.photo, cat:newShortOrderItem.cat, grams:newShortOrderItem.grams?Math.max(0,parseFloat(newShortOrderItem.grams)):null, servingUnit:"g", dishId:null };
+    const validSizes = (newShortOrderItem.sizes||[]).filter(s=>s.label.trim()&&parseFloat(s.price)>0).map(s=>({label:s.label.trim(), price:parseFloat(s.price)}));
+    const usingSizes = validSizes.length>0;
+    if(!newShortOrderItem.name) return;
+    if(!usingSizes && (!newShortOrderItem.price||parseFloat(newShortOrderItem.price)<=0)) return;
+    const price = usingSizes ? Math.min(...validSizes.map(s=>s.price)) : parseFloat(newShortOrderItem.price);
+    const item = { id:"so"+Date.now(), name:newShortOrderItem.name, price, available:true, img:newShortOrderItem.photo||newShortOrderItem.img||"🍽️", isPhoto:!!newShortOrderItem.photo, cat:newShortOrderItem.cat, grams:newShortOrderItem.grams?Math.max(0,parseFloat(newShortOrderItem.grams)):null, servingUnit:"g", dishId:null, sizes:validSizes };
     setShortOrderItems(prev=>[...prev, item]);
     dbInsertShortOrderItem(item);
-    setNewShortOrderItem({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"" });
+    setNewShortOrderItem({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", sizes:[] });
     setShowAddShortOrderItem(false);
   };
   const removeShortOrderItem = (id) => { if(!window.confirm("Remove this item?")) return; setShortOrderItems(prev=>prev.filter(i=>i.id!==id)); dbDeleteShortOrderItem(id); };
@@ -1231,24 +1242,41 @@ export default function KFCanteen() {
     dbInsertSuggestionReply(entry);
     setReplyDrafts(prev=>({...prev, [suggestionId]:""}));
   };
+  // Author-only delete. Deleting a suggestion also drops its replies — the DB
+  // enforces this via ON DELETE CASCADE, so local state just mirrors it.
+  const deleteSuggestion = (suggestionId) => {
+    if(!window.confirm("Delete this suggestion? Its replies will be deleted too.")) return;
+    setSuggestions(prev=>prev.filter(s=>s.id!==suggestionId));
+    setSuggestionReplies(prev=>prev.filter(r=>r.suggestionId!==suggestionId));
+    dbDeleteSuggestion(suggestionId);
+  };
+  const deleteSuggestionReply = (replyId) => {
+    if(!window.confirm("Delete this reply?")) return;
+    setSuggestionReplies(prev=>prev.filter(r=>r.id!==replyId));
+    dbDeleteSuggestionReply(replyId);
+  };
+  // Human-readable role name used to qualify an anonymized identity, e.g.
+  // "Anonymous (Customer)" — everyone can see and reply to every suggestion,
+  // but only superadmin ever sees the real name behind it.
+  const suggestionRoleLabel = (r) => r==="user"?"Customer":r==="staff-admin"?"Staff-Admin":r==="staff"?"Staff":r==="superadmin"?"Superadmin":"Admin";
   // How to label a thread message's author to the current viewer — admin/superadmin
   // replies always read as "Administrator" unless you ARE superadmin; the original
   // submitter's own follow-ups stay anonymized the same way the suggestion itself is.
   const suggestionAuthorLabel = (msgAuthorId, msgAuthorRole, msgAuthorName) => {
-    if(msgAuthorRole==="admin"||msgAuthorRole==="superadmin") return role==="superadmin" ? msgAuthorName : "Administrator";
+    if(msgAuthorRole==="admin"||msgAuthorRole==="superadmin"||msgAuthorRole==="staff-admin") return role==="superadmin" ? msgAuthorName : "Administrator";
     if(msgAuthorId===currentUser.id) return "You";
-    return role==="superadmin" ? msgAuthorName : "Anonymous";
+    return role==="superadmin" ? msgAuthorName : `Anonymous (${suggestionRoleLabel(msgAuthorRole)})`;
   };
   // A suggestion "needs an admin response" if its most recent activity
   // (last reply, or the original post if there are no replies yet) wasn't
-  // authored by an admin/superadmin.
+  // authored by an admin/superadmin/staff-admin.
   const suggestionNeedsAdminResponse = (suggestionId) => {
     const replies = suggestionReplies.filter(r=>r.suggestionId===suggestionId);
     if(replies.length===0) return true;
     const last = replies[replies.length-1];
-    return !(last.authorRole==="admin"||last.authorRole==="superadmin");
+    return !(last.authorRole==="admin"||last.authorRole==="superadmin"||last.authorRole==="staff-admin");
   };
-  const suggestionsAwaitingAdmin = isAdminLike ? suggestions.filter(s=>suggestionNeedsAdminResponse(s.id)).length : 0;
+  const suggestionsAwaitingAdmin = canModerateSuggestions ? suggestions.filter(s=>suggestionNeedsAdminResponse(s.id)).length : 0;
 
   const addReceipts = () => {
     if(!receiptPhotos.length) return;
@@ -1730,7 +1758,7 @@ export default function KFCanteen() {
                 <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
                 <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
                 {n.id==="cart"&&cartCount>0&&<span style={{marginLeft:"auto",background:PURPLE,color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
-                {n.id==="suggestions"&&isAdminLike&&suggestionsAwaitingAdmin>0&&<span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{suggestionsAwaitingAdmin}</span>}
+                {n.id==="suggestions"&&canModerateSuggestions&&suggestionsAwaitingAdmin>0&&<span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{suggestionsAwaitingAdmin}</span>}
               </button>
             );
           })}
@@ -1930,6 +1958,8 @@ export default function KFCanteen() {
               </div>
               <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>₱{item.price}</div>
             </div>
+          ) : item.sizes&&item.sizes.length>0 ? (
+            <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>From ₱{Math.min(...item.sizes.map(s=>s.price))}</div>
           ) : (
             <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>₱{item.price}</div>
           )}
@@ -1962,17 +1992,37 @@ export default function KFCanteen() {
   const AddOptionsModal = () => {
     if(!addOptionsItem) return null;
     const { item } = addOptionsItem;
+    const hasSizes = item.sizes&&item.sizes.length>0;
     return (
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
         <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
           <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0}}>
             <div>
               <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add to Cart</div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>{item.name} · ₱{item.price}</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>
+                {item.name} · {hasSizes ? (addOptionsSize?`₱${addOptionsSize.price}`:`From ₱${Math.min(...item.sizes.map(s=>s.price))}`) : `₱${item.price}`}
+              </div>
             </div>
             <button onClick={closeAddOptions} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
           </div>
           <div style={{padding:"22px"}}>
+            {hasSizes&&(
+              <div style={{marginBottom:18}}>
+                <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Select a size</label>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {item.sizes.map((s,i)=>{
+                    const selected = addOptionsSize&&addOptionsSize.label===s.label;
+                    return (
+                      <button key={i} onClick={()=>setAddOptionsSize(s)}
+                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,border:selected?`2px solid ${PURPLE}`:"1px solid #E5E7EB",background:selected?PURPLE_LIGHT:"#fff",cursor:"pointer",textAlign:"left"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:selected?PURPLE:"#111"}}>{s.label}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:selected?PURPLE:"#374151"}}>₱{s.price}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Remarks (optional)</label>
             <textarea value={addOptionsRemarks} onChange={e=>setAddOptionsRemarks(e.target.value)} placeholder="e.g. no ice, extra spicy, less rice"
               rows={2} style={{width:"100%",fontSize:13,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",resize:"vertical",fontFamily:"inherit"}} />
@@ -2002,8 +2052,9 @@ export default function KFCanteen() {
             )}
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button onClick={closeAddOptions} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-              <button onClick={confirmAddOptions} style={{flex:2,background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                <Icon name="plus" size={14} color="#fff" /> Add to Cart
+              <button onClick={confirmAddOptions} disabled={hasSizes&&!addOptionsSize}
+                style={{flex:2,background:(hasSizes&&!addOptionsSize)?"#C4B5FD":PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(hasSizes&&!addOptionsSize)?"not-allowed":"pointer",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                <Icon name="plus" size={14} color="#fff" /> {hasSizes&&!addOptionsSize?"Select a size":"Add to Cart"}
               </button>
             </div>
           </div>
@@ -2041,7 +2092,11 @@ export default function KFCanteen() {
                 <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
                 <div style={{fontSize:12,color:"#6B7280",display:"flex",gap:8,flexWrap:"wrap",marginTop:2}}>
                   {item.cat&&<span>{item.cat}</span>}
-                  <span style={{color:PURPLE,fontWeight:600}}>₱{item.price}</span>
+                  {item.sizes&&item.sizes.length>0 ? (
+                    <span style={{color:PURPLE,fontWeight:600}}>{item.sizes.map(s=>`${s.label} ₱${s.price}`).join(" · ")}</span>
+                  ) : (
+                    <span style={{color:PURPLE,fontWeight:600}}>₱{item.price}</span>
+                  )}
                 </div>
               </div>
               <span style={{fontSize:11,background:item.available!==false?"#D1FAE5":"#FEE2E2",color:item.available!==false?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>
@@ -2059,9 +2114,13 @@ export default function KFCanteen() {
     );
   };
 
-  const AddFixedMenuItemModal = ({ title, newItem, setNewItem, dragOver, setDragOver, photoInputRef, handlePhotoFile, onSave, onClose }) => (
+  const AddFixedMenuItemModal = ({ title, newItem, setNewItem, dragOver, setDragOver, photoInputRef, handlePhotoFile, onSave, onClose, showSizes }) => {
+    const usingSizes = showSizes && newItem.sizes && newItem.sizes.length>0;
+    const hasValidSize = usingSizes && newItem.sizes.some(s=>s.label.trim()&&parseFloat(s.price)>0);
+    const canSave = newItem.name && (usingSizes ? hasValidSize : newItem.price);
+    return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-      <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+      <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
         <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{title}</div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
@@ -2095,7 +2154,7 @@ export default function KFCanteen() {
             <input value={newItem.name} onChange={e=>setNewItem(p=>({...p,name:e.target.value}))} placeholder="e.g. Chicken Adobo"
               style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:usingSizes?"1fr":"1fr 1fr",gap:10}}>
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
               <select value={newItem.cat} onChange={e=>setNewItem(p=>({...p,cat:e.target.value}))}
@@ -2103,23 +2162,57 @@ export default function KFCanteen() {
                 {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
               </select>
             </div>
-            <div>
-              <label style={{fontSize:12,fontWeight:600,color:"#059669",display:"block",marginBottom:6}}>Price (₱)</label>
-              <input value={newItem.price} onChange={e=>setNewItem(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
-                style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
-            </div>
+            {!usingSizes&&(
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"#059669",display:"block",marginBottom:6}}>Price (₱)</label>
+                <input value={newItem.price} onChange={e=>setNewItem(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
+                  style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
+              </div>
+            )}
           </div>
+          {showSizes&&(
+            <div>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer",marginBottom:usingSizes?10:0}}>
+                <input type="checkbox" checked={usingSizes} onChange={e=>{
+                  if(e.target.checked) setNewItem(p=>({...p, sizes:[{label:"",price:""}]}));
+                  else setNewItem(p=>({...p, sizes:[]}));
+                }} />
+                This item has multiple sizes (customer must pick one)
+              </label>
+              {usingSizes&&(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {newItem.sizes.map((s,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <input value={s.label} onChange={e=>setNewItem(p=>({...p,sizes:p.sizes.map((x,xi)=>xi===i?{...x,label:e.target.value}:x)}))}
+                        placeholder="e.g. Small" style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                      <input value={s.price} onChange={e=>setNewItem(p=>({...p,sizes:p.sizes.map((x,xi)=>xi===i?{...x,price:e.target.value}:x)}))}
+                        placeholder="₱0.00" type="number" min="0" style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                      <button onClick={()=>setNewItem(p=>({...p,sizes:p.sizes.filter((_,xi)=>xi!==i)}))} disabled={newItem.sizes.length===1}
+                        style={{background:"none",border:"none",cursor:newItem.sizes.length===1?"not-allowed":"pointer",padding:4,flexShrink:0}}>
+                        <Icon name="trash" size={14} color={newItem.sizes.length===1?"#D1D5DB":"#EF4444"} />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={()=>setNewItem(p=>({...p,sizes:[...p.sizes,{label:"",price:""}]}))}
+                    style={{alignSelf:"flex-start",background:"none",border:"none",color:PURPLE,fontSize:12,fontWeight:700,cursor:"pointer",padding:0,marginTop:2}}>
+                    + Add Size
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div style={{display:"flex",gap:10,marginTop:4}}>
             <button onClick={onClose} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-            <button onClick={onSave} disabled={!newItem.name||!newItem.price}
-              style={{flex:2,background:newItem.name&&newItem.price?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newItem.name&&newItem.price?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <button onClick={onSave} disabled={!canSave}
+              style={{flex:2,background:canSave?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:canSave?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
               <Icon name="plus" size={15} color="#fff" /> Add Item
             </button>
           </div>
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   /* ════════════════════════════════════════
      RENDER TABS
@@ -2189,8 +2282,9 @@ export default function KFCanteen() {
           {visibleShortOrder.length===0 ? <Empty msg="No Short Order items yet" sub="Ask an Admin or Staff-Admin to add items in Manage Short Order." /> : (
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14}}>
               {visibleShortOrder.map(item=><FoodCard key={item.id} item={item}
-                onAdd={()=>openAddOptions(item, (remarks,drinks)=>{
-                  addToCart(item, null, {remarks, fixedMenu:true});
+                onAdd={()=>openAddOptions(item, (remarks,drinks,size)=>{
+                  const cartItem = size ? {...item, price:size.price} : item;
+                  addToCart(cartItem, null, {remarks, fixedMenu:true, sizeLabel:size?size.label:null});
                   drinks.forEach(d=>addToCart(d, null, {qty:d.qty, fixedMenu:true}));
                 })} />)}
             </div>
@@ -2287,6 +2381,7 @@ export default function KFCanteen() {
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:14,color:"#111"}}>
                     {item.name}
+                    {item.sizeLabel&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>{item.sizeLabel}</span>}
                     {item.scheduledDate&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>📅 {item.scheduledDate instanceof Date?formatDateLabel(item.scheduledDate):item.scheduledDate}</span>}
                   </div>
                   {item.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280",background:"#F3F4F6",borderRadius:20,padding:"1px 7px",margin:"2px 0"}}>{unitIcon(item.servingUnit)} {formatServing(item.grams,item.servingUnit)} per serving</div>}
@@ -2364,6 +2459,7 @@ export default function KFCanteen() {
                   <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#374151",padding:"4px 0",alignItems:"flex-start"}}>
                     <div>
                       <span>{it.name} × {it.qty}</span>
+                      {it.size&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>{it.size}</span>}
                       {it.scheduledDate&&<span style={{marginLeft:6,fontSize:11,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10}}>📅 {it.scheduledDate}</span>}
                       {it.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,color:"#9CA3AF",marginLeft:6}}>{unitIcon(it.servingUnit)} {formatServing(it.grams,it.servingUnit)}/serving</div>}
                       {it.remarks&&<div style={{fontSize:11,color:"#6B7280",fontStyle:"italic"}}>📝 {it.remarks}</div>}
@@ -2624,7 +2720,8 @@ export default function KFCanteen() {
           <AddFixedMenuItemModal title="Add Short Order Item" newItem={newShortOrderItem} setNewItem={setNewShortOrderItem}
             dragOver={shortOrderDragOver} setDragOver={setShortOrderDragOver} photoInputRef={shortOrderPhotoInputRef}
             handlePhotoFile={handleShortOrderPhotoFile} onSave={addShortOrderItem}
-            onClose={()=>{setShowAddShortOrderItem(false);setNewShortOrderItem({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"" });}} />
+            onClose={()=>{setShowAddShortOrderItem(false);setNewShortOrderItem({ name:"", price:"", img:"🍽️", cat:"LUNCH", photo:null, grams:"", sizes:[] });}}
+            showSizes />
         )}
       </div>
     );
@@ -3018,6 +3115,7 @@ export default function KFCanteen() {
                         {order.items.map((it,i)=>(
                           <div key={i} style={{fontSize:12,lineHeight:1.7,whiteSpace:"nowrap"}}>
                             {it.name} ×{it.qty}
+                            {it.size&&<span style={{marginLeft:6,fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 6px",borderRadius:8}}>{it.size}</span>}
                             {it.scheduledDate&&<span style={{marginLeft:6,fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 6px",borderRadius:8}}>📅 {it.scheduledDate}</span>}
                             {it.remarks&&<div style={{fontSize:10,color:"#9CA3AF",fontStyle:"italic",whiteSpace:"normal"}}>📝 {it.remarks}</div>}
                           </div>
@@ -5502,13 +5600,14 @@ export default function KFCanteen() {
         return (
           <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
             {replies.map(r=>{
-              const isAdminMsg = r.authorRole==="admin"||r.authorRole==="superadmin";
+              const isAdminMsg = r.authorRole==="admin"||r.authorRole==="superadmin"||r.authorRole==="staff-admin";
               return (
                 <div key={r.id} style={{background:isAdminMsg?PURPLE_LIGHT:"#F9FAFB",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
                   <div style={{fontSize:12,color:"#111"}}>{r.content}</div>
                   <div style={{fontSize:10,color:"#9CA3AF",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
                     <span style={{fontWeight:600,color:isAdminMsg?PURPLE:"#6B7280"}}>{suggestionAuthorLabel(r.authorId,r.authorRole,r.authorName)}</span>
                     <span>· {new Date(r.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})} · {new Date(r.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                    {r.authorId===currentUser.id&&<button onClick={()=>deleteSuggestionReply(r.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,marginLeft:"auto",fontSize:10,fontWeight:600}}>Delete</button>}
                   </div>
                 </div>
               );
@@ -5547,12 +5646,15 @@ export default function KFCanteen() {
           {myHistory.length===0 ? (
             <Empty msg="No suggestions yet" sub="Anything you submit will show up here." />
           ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:isAdminLike?28:0}}>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:28}}>
               {myHistory.map(s=>{
                 const adminReplied = !suggestionNeedsAdminResponse(s.id) && suggestionReplies.some(r=>r.suggestionId===s.id);
                 return (
                   <div key={s.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px"}}>
-                    <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                      <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                      <button onClick={()=>deleteSuggestion(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,fontSize:11,fontWeight:600,flexShrink:0}}>Delete</button>
+                    </div>
                     <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6}}>
                       <span>{new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
                       {adminReplied&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>💬 Administrator replied</span>}
@@ -5564,8 +5666,7 @@ export default function KFCanteen() {
             </div>
           )}
 
-          {isAdminLike&&(
-            <>
+          <>
               <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 4px"}}>All Suggestions</h3>
               <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>
                 {role==="superadmin" ? "You can see who submitted each one and who replied — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter and admin-reply identities are hidden here for privacy. They can still be looked up internally if a suggestion needs to be traced back (e.g. foul language)."}
@@ -5576,16 +5677,20 @@ export default function KFCanteen() {
                 <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
                   {suggestions.map(s=>{
                     const needsResponse = suggestionNeedsAdminResponse(s.id);
+                    const submitter = users.find(u=>u.id===s.userId);
                     return (
                       <div key={s.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6"}}>
-                        <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                          <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
+                          {s.userId===currentUser.id&&<button onClick={()=>deleteSuggestion(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,fontSize:11,fontWeight:600,flexShrink:0}}>Delete</button>}
+                        </div>
                         <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           {role==="superadmin"
                             ? <span style={{fontWeight:600,color:PURPLE}}>{s.userName}</span>
-                            : <span style={{fontStyle:"italic"}}>Anonymous</span>}
+                            : <span style={{fontStyle:"italic"}}>Anonymous{submitter?` (${suggestionRoleLabel(submitter.role)})`:""}</span>}
                           <span>· {new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
                           {needsResponse
-                            ? <span style={{background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>🕓 Awaiting your reply</span>
+                            ? <span style={{background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>🕓 Awaiting admin reply</span>
                             : <span style={{background:"#D1FAE5",color:"#065F46",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>✅ Replied</span>}
                         </div>
                         <Thread s={s} />
@@ -5595,7 +5700,6 @@ export default function KFCanteen() {
                 </div>
               )}
             </>
-          )}
         </div>
       );
     }
