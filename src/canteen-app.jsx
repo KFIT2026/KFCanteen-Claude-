@@ -220,6 +220,197 @@ const NAV = {
 };
 NAV.superadmin = NAV.admin;
 
+// Module-scope (not redefined on every KFCanteen render) so React keeps the
+// same component identity across renders -- otherwise every keystroke in the
+// reply box would tear down and rebuild this whole subtree, dropping focus
+// after each letter (had to click back into the field to type the next one).
+const SuggestionThread = ({ s, suggestionReplies, replyDrafts, replyErrors, currentUserId, suggestionAuthorLabel, deleteSuggestionReply, submitSuggestionReply, setReplyDrafts, setReplyErrors }) => {
+  const replies = suggestionReplies.filter(r=>r.suggestionId===s.id);
+  const draft = replyDrafts[s.id]||"";
+  const replyError = replyErrors[s.id]||"";
+  return (
+    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
+      {replies.map(r=>{
+        const isAdminMsg = r.authorRole==="admin"||r.authorRole==="superadmin"||r.authorRole==="staff-admin";
+        return (
+          <div key={r.id} style={{background:isAdminMsg?PURPLE_LIGHT:"#F9FAFB",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
+            <div style={{fontSize:12,color:"#111"}}>{r.content}</div>
+            <div style={{fontSize:10,color:"#9CA3AF",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontWeight:600,color:isAdminMsg?PURPLE:"#6B7280"}}>{suggestionAuthorLabel(r.authorId,r.authorRole,r.authorName)}</span>
+              <span>· {new Date(r.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})} · {new Date(r.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+              {r.authorId===currentUserId&&<button onClick={()=>deleteSuggestionReply(r.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,marginLeft:"auto",fontSize:10,fontWeight:600}}>Delete</button>}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{display:"flex",gap:6,marginTop:6}}>
+        <input value={draft} onChange={e=>{setReplyDrafts(prev=>({...prev,[s.id]:e.target.value})); if(replyErrors[s.id]) setReplyErrors(prev=>({...prev,[s.id]:""}));}}
+          onKeyDown={e=>{if(e.key==="Enter"&&draft.trim()) submitSuggestionReply(s.id);}}
+          placeholder="Write a reply..."
+          style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:7,border:replyError?"1.5px solid #EF4444":"1.5px solid #E5E7EB",outline:"none",boxSizing:"border-box"}} />
+        <button onClick={()=>submitSuggestionReply(s.id)} disabled={!draft.trim()}
+          style={{background:draft.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:7,padding:"7px 14px",cursor:draft.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+          Reply
+        </button>
+      </div>
+      {replyError&&<div style={{marginTop:6,fontSize:11,color:"#EF4444",fontWeight:600}}>⚠️ {replyError}</div>}
+    </div>
+  );
+};
+
+// Module-scope for the same reason as SuggestionThread above -- both are
+// fully prop-driven already (no closures on outer state), so hoisting them
+// out is a pure relocation, no logic changes.
+const FixedMenuManager = ({ label, icon, items, search, setSearch, onToggle, onRemove, onAddClick, Empty }) => {
+  const filtered = items.filter(i=>i.name.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
+        <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
+          <Icon name={icon} size={20} color={PURPLE} /> {label}
+        </h2>
+        <button onClick={onAddClick} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+          <Icon name="plus" size={14} color="#fff" /> Add Item
+        </button>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",marginBottom:16,maxWidth:340}}>
+        <Icon name="search" size={15} color="#9CA3AF" />
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items..."
+          style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+        {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.map(item=>(
+          <div key={item.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,opacity:item.available===false?0.7:1}}>
+            <div style={{width:52,height:52,borderRadius:10,background:PURPLE_LIGHT,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>
+              {item.isPhoto&&item.img ? <img src={item.img} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : (item.img||"🍽️")}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
+              <div style={{fontSize:12,color:"#6B7280",display:"flex",gap:8,flexWrap:"wrap",marginTop:2}}>
+                {item.cat&&<span>{item.cat}</span>}
+                {item.sizes&&item.sizes.length>0 ? (
+                  <span style={{color:PURPLE,fontWeight:600}}>{item.sizes.map(s=>`${s.label} ₱${s.price}`).join(" · ")}</span>
+                ) : (
+                  <span style={{color:PURPLE,fontWeight:600}}>₱{item.price}</span>
+                )}
+              </div>
+            </div>
+            <span style={{fontSize:11,background:item.available!==false?"#D1FAE5":"#FEE2E2",color:item.available!==false?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>
+              {item.available!==false?"Available":"Unavailable"}
+            </span>
+            <button onClick={()=>onToggle(item.id)} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontSize:12,color:"#374151",fontWeight:500,whiteSpace:"nowrap"}}>Toggle</button>
+            <button onClick={()=>onRemove(item.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500,flexShrink:0}}>
+              <Icon name="trash" size={13} color="#991B1B" /> Remove
+            </button>
+          </div>
+        ))}
+        {filtered.length===0&&<Empty msg="No items found" sub="Try a different search, or add a new item." />}
+      </div>
+    </div>
+  );
+};
+
+const AddFixedMenuItemModal = ({ title, newItem, setNewItem, dragOver, setDragOver, photoInputRef, handlePhotoFile, onSave, onClose, showSizes }) => {
+  const usingSizes = showSizes && newItem.sizes && newItem.sizes.length>0;
+  const hasValidSize = usingSizes && newItem.sizes.some(s=>s.label.trim()&&parseFloat(s.price)>0);
+  const canSave = newItem.name && (usingSizes ? hasValidSize : newItem.price);
+  return (
+  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+    <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+      <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{title}</div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+      </div>
+      <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
+        <div>
+          <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Photo</label>
+          <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
+            onDrop={e=>{e.preventDefault();setDragOver(false);handlePhotoFile(e.dataTransfer.files[0]);}}
+            onClick={()=>photoInputRef.current?.click()}
+            style={{border:`2px dashed ${dragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:dragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",position:"relative",minHeight:110,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
+            {newItem.photo ? (
+              <><img src={newItem.photo} alt="preview" style={{maxHeight:86,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
+                <button onClick={e=>{e.stopPropagation();setNewItem(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </>
+            ) : (
+              <><div style={{width:36,height:36,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={16} color={PURPLE} /></div>
+                <div style={{fontSize:12,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
+                  <input value={newItem.img} onChange={e=>setNewItem(p=>({...p,img:e.target.value}))} onClick={e=>e.stopPropagation()}
+                    style={{width:48,fontSize:18,borderRadius:8,border:"1px solid #E5E7EB",padding:"3px 5px",textAlign:"center",background:"#fff"}} />
+                </div>
+              </>
+            )}
+            <input ref={photoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handlePhotoFile(e.target.files[0])} />
+          </div>
+        </div>
+        <div>
+          <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Item Name</label>
+          <input value={newItem.name} onChange={e=>setNewItem(p=>({...p,name:e.target.value}))} placeholder="e.g. Chicken Adobo"
+            style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:usingSizes?"1fr":"1fr 1fr",gap:10}}>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
+            <select value={newItem.cat} onChange={e=>setNewItem(p=>({...p,cat:e.target.value}))}
+              style={{width:"100%",fontSize:13,padding:"10px 8px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
+              {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          {!usingSizes&&(
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"#059669",display:"block",marginBottom:6}}>Price (₱)</label>
+              <input value={newItem.price} onChange={e=>setNewItem(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
+                style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
+            </div>
+          )}
+        </div>
+        {showSizes&&(
+          <div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer",marginBottom:usingSizes?10:0}}>
+              <input type="checkbox" checked={usingSizes} onChange={e=>{
+                if(e.target.checked) setNewItem(p=>({...p, sizes:[{label:"",price:""}]}));
+                else setNewItem(p=>({...p, sizes:[]}));
+              }} />
+              This item has multiple sizes (customer must pick one)
+            </label>
+            {usingSizes&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {newItem.sizes.map((s,i)=>(
+                  <div key={i} style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <input value={s.label} onChange={e=>setNewItem(p=>({...p,sizes:p.sizes.map((x,xi)=>xi===i?{...x,label:e.target.value}:x)}))}
+                      placeholder="e.g. Small" style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    <input value={s.price} onChange={e=>setNewItem(p=>({...p,sizes:p.sizes.map((x,xi)=>xi===i?{...x,price:e.target.value}:x)}))}
+                      placeholder="₱0.00" type="number" min="0" style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    <button onClick={()=>setNewItem(p=>({...p,sizes:p.sizes.filter((_,xi)=>xi!==i)}))} disabled={newItem.sizes.length===1}
+                      style={{background:"none",border:"none",cursor:newItem.sizes.length===1?"not-allowed":"pointer",padding:4,flexShrink:0}}>
+                      <Icon name="trash" size={14} color={newItem.sizes.length===1?"#D1D5DB":"#EF4444"} />
+                    </button>
+                  </div>
+                ))}
+                <button onClick={()=>setNewItem(p=>({...p,sizes:[...p.sizes,{label:"",price:""}]}))}
+                  style={{alignSelf:"flex-start",background:"none",border:"none",color:PURPLE,fontSize:12,fontWeight:700,cursor:"pointer",padding:0,marginTop:2}}>
+                  + Add Size
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <button onClick={onClose} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+          <button onClick={onSave} disabled={!canSave}
+            style={{flex:2,background:canSave?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:canSave?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <Icon name="plus" size={15} color="#fff" /> Add Item
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  );
+};
+
 export default function KFCanteen() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
@@ -2023,230 +2214,7 @@ export default function KFCanteen() {
   );
 
   /* ── remarks + drink-upsell prompt, shared by Short Order & Visitor Menu ── */
-  const AddOptionsModal = () => {
-    if(!addOptionsItem) return null;
-    const { item } = addOptionsItem;
-    const hasSizes = item.sizes&&item.sizes.length>0;
-    return (
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-        <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-          <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0}}>
-            <div>
-              <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add to Cart</div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>
-                {item.name} · {hasSizes ? (addOptionsSize?`₱${addOptionsSize.price}`:`From ₱${Math.min(...item.sizes.map(s=>s.price))}`) : `₱${item.price}`}
-              </div>
-            </div>
-            <button onClick={closeAddOptions} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
-          </div>
-          <div style={{padding:"22px"}}>
-            {hasSizes&&(
-              <div style={{marginBottom:18}}>
-                <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Select a size</label>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {item.sizes.map((s,i)=>{
-                    const selected = addOptionsSize&&addOptionsSize.label===s.label;
-                    return (
-                      <button key={i} onClick={()=>setAddOptionsSize(s)}
-                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,border:selected?`2px solid ${PURPLE}`:"1px solid #E5E7EB",background:selected?PURPLE_LIGHT:"#fff",cursor:"pointer",textAlign:"left"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:selected?PURPLE:"#111"}}>{s.label}</span>
-                        <span style={{fontSize:13,fontWeight:700,color:selected?PURPLE:"#374151"}}>₱{s.price}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Remarks (optional)</label>
-            <textarea value={addOptionsRemarks} onChange={e=>setAddOptionsRemarks(e.target.value)} placeholder="e.g. no ice, extra spicy, less rice"
-              rows={2} style={{width:"100%",fontSize:13,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",resize:"vertical",fontFamily:"inherit"}} />
-            {availableDrinks.length>0&&(
-              <div style={{marginTop:18}}>
-                <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Would you like to add a drink? (optional)</label>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {availableDrinks.map(d=>{
-                    const qty = addOptionsDrinks[d.id]||0;
-                    return (
-                      <div key={d.id} style={{display:"flex",alignItems:"center",gap:10,background:"#F9FAFB",borderRadius:10,padding:"8px 12px"}}>
-                        <span style={{fontSize:20}}>{d.isPhoto&&d.photo?<img src={d.photo} alt="" style={{width:28,height:28,borderRadius:6,objectFit:"cover"}} />:d.emoji}</span>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:13,fontWeight:600,color:"#111"}}>{d.name}</div>
-                          <div style={{fontSize:11,color:"#6B7280"}}>₱{d.price}</div>
-                        </div>
-                        <button onClick={()=>setAddOptionsDrinks(p=>({...p,[d.id]:Math.max(0,(p[d.id]||0)-1)}))} disabled={qty===0}
-                          style={{width:26,height:26,borderRadius:7,border:"1px solid #E5E7EB",background:"#fff",cursor:qty===0?"not-allowed":"pointer",fontSize:14,color:"#374151",fontWeight:700}}>−</button>
-                        <span style={{minWidth:18,textAlign:"center",fontSize:13,fontWeight:700,color:"#111"}}>{qty}</span>
-                        <button onClick={()=>setAddOptionsDrinks(p=>({...p,[d.id]:(p[d.id]||0)+1}))}
-                          style={{width:26,height:26,borderRadius:7,border:"1px solid #E5E7EB",background:"#fff",cursor:"pointer",fontSize:14,color:"#374151",fontWeight:700}}>+</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <div style={{display:"flex",gap:10,marginTop:20}}>
-              <button onClick={closeAddOptions} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-              <button onClick={confirmAddOptions} disabled={hasSizes&&!addOptionsSize}
-                style={{flex:2,background:(hasSizes&&!addOptionsSize)?"#C4B5FD":PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(hasSizes&&!addOptionsSize)?"not-allowed":"pointer",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                <Icon name="plus" size={14} color="#fff" /> {hasSizes&&!addOptionsSize?"Select a size":"Add to Cart"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   /* ── fixed (non-dated) menu manager — shared by Manage Short Order & Manage Visitor Menu ── */
-  const FixedMenuManager = ({ label, icon, items, search, setSearch, onToggle, onRemove, onAddClick }) => {
-    const filtered = items.filter(i=>i.name.toLowerCase().includes(search.toLowerCase()));
-    return (
-      <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
-          <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
-            <Icon name={icon} size={20} color={PURPLE} /> {label}
-          </h2>
-          <button onClick={onAddClick} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-            <Icon name="plus" size={14} color="#fff" /> Add Item
-          </button>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",marginBottom:16,maxWidth:340}}>
-          <Icon name="search" size={15} color="#9CA3AF" />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items..."
-            style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
-          {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {filtered.map(item=>(
-            <div key={item.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,opacity:item.available===false?0.7:1}}>
-              <div style={{width:52,height:52,borderRadius:10,background:PURPLE_LIGHT,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>
-                {item.isPhoto&&item.img ? <img src={item.img} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : (item.img||"🍽️")}
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
-                <div style={{fontSize:12,color:"#6B7280",display:"flex",gap:8,flexWrap:"wrap",marginTop:2}}>
-                  {item.cat&&<span>{item.cat}</span>}
-                  {item.sizes&&item.sizes.length>0 ? (
-                    <span style={{color:PURPLE,fontWeight:600}}>{item.sizes.map(s=>`${s.label} ₱${s.price}`).join(" · ")}</span>
-                  ) : (
-                    <span style={{color:PURPLE,fontWeight:600}}>₱{item.price}</span>
-                  )}
-                </div>
-              </div>
-              <span style={{fontSize:11,background:item.available!==false?"#D1FAE5":"#FEE2E2",color:item.available!==false?"#065F46":"#991B1B",padding:"3px 10px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>
-                {item.available!==false?"Available":"Unavailable"}
-              </span>
-              <button onClick={()=>onToggle(item.id)} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 12px",cursor:"pointer",fontSize:12,color:"#374151",fontWeight:500,whiteSpace:"nowrap"}}>Toggle</button>
-              <button onClick={()=>onRemove(item.id)} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500,flexShrink:0}}>
-                <Icon name="trash" size={13} color="#991B1B" /> Remove
-              </button>
-            </div>
-          ))}
-          {filtered.length===0&&<Empty msg="No items found" sub="Try a different search, or add a new item." />}
-        </div>
-      </div>
-    );
-  };
-
-  const AddFixedMenuItemModal = ({ title, newItem, setNewItem, dragOver, setDragOver, photoInputRef, handlePhotoFile, onSave, onClose, showSizes }) => {
-    const usingSizes = showSizes && newItem.sizes && newItem.sizes.length>0;
-    const hasValidSize = usingSizes && newItem.sizes.some(s=>s.label.trim()&&parseFloat(s.price)>0);
-    const canSave = newItem.name && (usingSizes ? hasValidSize : newItem.price);
-    return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-      <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-        <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{title}</div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-        </div>
-        <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
-          <div>
-            <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Photo</label>
-            <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
-              onDrop={e=>{e.preventDefault();setDragOver(false);handlePhotoFile(e.dataTransfer.files[0]);}}
-              onClick={()=>photoInputRef.current?.click()}
-              style={{border:`2px dashed ${dragOver?PURPLE:"#D1D5DB"}`,borderRadius:12,padding:"1.25rem",textAlign:"center",cursor:"pointer",background:dragOver?PURPLE_LIGHT:"#FAFAFA",transition:"all 0.15s",position:"relative",minHeight:110,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-              {newItem.photo ? (
-                <><img src={newItem.photo} alt="preview" style={{maxHeight:86,maxWidth:"100%",borderRadius:10,objectFit:"cover"}} />
-                  <button onClick={e=>{e.stopPropagation();setNewItem(p=>({...p,photo:null}));}} style={{position:"absolute",top:8,right:8,background:"#EF4444",border:"none",borderRadius:6,color:"#fff",width:26,height:26,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                </>
-              ) : (
-                <><div style={{width:36,height:36,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={16} color={PURPLE} /></div>
-                  <div style={{fontSize:12,fontWeight:600,color:"#374151"}}>Drop photo here or click to browse</div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:11,color:"#9CA3AF"}}>or use emoji:</span>
-                    <input value={newItem.img} onChange={e=>setNewItem(p=>({...p,img:e.target.value}))} onClick={e=>e.stopPropagation()}
-                      style={{width:48,fontSize:18,borderRadius:8,border:"1px solid #E5E7EB",padding:"3px 5px",textAlign:"center",background:"#fff"}} />
-                  </div>
-                </>
-              )}
-              <input ref={photoInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handlePhotoFile(e.target.files[0])} />
-            </div>
-          </div>
-          <div>
-            <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Item Name</label>
-            <input value={newItem.name} onChange={e=>setNewItem(p=>({...p,name:e.target.value}))} placeholder="e.g. Chicken Adobo"
-              style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:usingSizes?"1fr":"1fr 1fr",gap:10}}>
-            <div>
-              <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
-              <select value={newItem.cat} onChange={e=>setNewItem(p=>({...p,cat:e.target.value}))}
-                style={{width:"100%",fontSize:13,padding:"10px 8px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                {["BREAKFAST","LUNCH","SNACK"].map(c=><option key={c}>{c}</option>)}
-              </select>
-            </div>
-            {!usingSizes&&(
-              <div>
-                <label style={{fontSize:12,fontWeight:600,color:"#059669",display:"block",marginBottom:6}}>Price (₱)</label>
-                <input value={newItem.price} onChange={e=>setNewItem(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0"
-                  style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
-              </div>
-            )}
-          </div>
-          {showSizes&&(
-            <div>
-              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer",marginBottom:usingSizes?10:0}}>
-                <input type="checkbox" checked={usingSizes} onChange={e=>{
-                  if(e.target.checked) setNewItem(p=>({...p, sizes:[{label:"",price:""}]}));
-                  else setNewItem(p=>({...p, sizes:[]}));
-                }} />
-                This item has multiple sizes (customer must pick one)
-              </label>
-              {usingSizes&&(
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {newItem.sizes.map((s,i)=>(
-                    <div key={i} style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <input value={s.label} onChange={e=>setNewItem(p=>({...p,sizes:p.sizes.map((x,xi)=>xi===i?{...x,label:e.target.value}:x)}))}
-                        placeholder="e.g. Small" style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                      <input value={s.price} onChange={e=>setNewItem(p=>({...p,sizes:p.sizes.map((x,xi)=>xi===i?{...x,price:e.target.value}:x)}))}
-                        placeholder="₱0.00" type="number" min="0" style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #A7F3D0",background:"#F0FDF4",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                      <button onClick={()=>setNewItem(p=>({...p,sizes:p.sizes.filter((_,xi)=>xi!==i)}))} disabled={newItem.sizes.length===1}
-                        style={{background:"none",border:"none",cursor:newItem.sizes.length===1?"not-allowed":"pointer",padding:4,flexShrink:0}}>
-                        <Icon name="trash" size={14} color={newItem.sizes.length===1?"#D1D5DB":"#EF4444"} />
-                      </button>
-                    </div>
-                  ))}
-                  <button onClick={()=>setNewItem(p=>({...p,sizes:[...p.sizes,{label:"",price:""}]}))}
-                    style={{alignSelf:"flex-start",background:"none",border:"none",color:PURPLE,fontSize:12,fontWeight:700,cursor:"pointer",padding:0,marginTop:2}}>
-                    + Add Size
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          <div style={{display:"flex",gap:10,marginTop:4}}>
-            <button onClick={onClose} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-            <button onClick={onSave} disabled={!canSave}
-              style={{flex:2,background:canSave?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:canSave?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              <Icon name="plus" size={15} color="#fff" /> Add Item
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    );
-  };
 
   /* ════════════════════════════════════════
      RENDER TABS
@@ -2749,7 +2717,7 @@ export default function KFCanteen() {
         <FixedMenuManager label="Manage Short Order" icon="menu" items={shortOrderItems}
           search={shortOrderMgSearch} setSearch={setShortOrderMgSearch}
           onToggle={toggleShortOrderAvail} onRemove={removeShortOrderItem}
-          onAddClick={()=>setShowAddShortOrderItem(true)} />
+          onAddClick={()=>setShowAddShortOrderItem(true)} Empty={Empty} />
         {showAddShortOrderItem&&(
           <AddFixedMenuItemModal title="Add Short Order Item" newItem={newShortOrderItem} setNewItem={setNewShortOrderItem}
             dragOver={shortOrderDragOver} setDragOver={setShortOrderDragOver} photoInputRef={shortOrderPhotoInputRef}
@@ -2766,7 +2734,7 @@ export default function KFCanteen() {
         <FixedMenuManager label="Manage Visitor Menu" icon="register" items={visitorMenuItems}
           search={visitorMgSearch} setSearch={setVisitorMgSearch}
           onToggle={toggleVisitorMenuAvail} onRemove={removeVisitorMenuItem}
-          onAddClick={()=>setShowAddVisitorMenuItem(true)} />
+          onAddClick={()=>setShowAddVisitorMenuItem(true)} Empty={Empty} />
         {showAddVisitorMenuItem&&(
           <AddFixedMenuItemModal title="Add Visitor Menu Item" newItem={newVisitorMenuItem} setNewItem={setNewVisitorMenuItem}
             dragOver={visitorMenuDragOver} setDragOver={setVisitorMenuDragOver} photoInputRef={visitorMenuPhotoInputRef}
@@ -5626,42 +5594,6 @@ export default function KFCanteen() {
 
     /* ── SUGGESTION BOX ── */
     if(activeTab==="suggestions") {
-      const myHistory = suggestions.filter(s=>s.userId===currentUser.id);
-
-      const Thread = ({s}) => {
-        const replies = suggestionReplies.filter(r=>r.suggestionId===s.id);
-        const draft = replyDrafts[s.id]||"";
-        const replyError = replyErrors[s.id]||"";
-        return (
-          <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
-            {replies.map(r=>{
-              const isAdminMsg = r.authorRole==="admin"||r.authorRole==="superadmin"||r.authorRole==="staff-admin";
-              return (
-                <div key={r.id} style={{background:isAdminMsg?PURPLE_LIGHT:"#F9FAFB",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
-                  <div style={{fontSize:12,color:"#111"}}>{r.content}</div>
-                  <div style={{fontSize:10,color:"#9CA3AF",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontWeight:600,color:isAdminMsg?PURPLE:"#6B7280"}}>{suggestionAuthorLabel(r.authorId,r.authorRole,r.authorName)}</span>
-                    <span>· {new Date(r.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})} · {new Date(r.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
-                    {r.authorId===currentUser.id&&<button onClick={()=>deleteSuggestionReply(r.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,marginLeft:"auto",fontSize:10,fontWeight:600}}>Delete</button>}
-                  </div>
-                </div>
-              );
-            })}
-            <div style={{display:"flex",gap:6,marginTop:6}}>
-              <input value={draft} onChange={e=>{setReplyDrafts(prev=>({...prev,[s.id]:e.target.value})); if(replyErrors[s.id]) setReplyErrors(prev=>({...prev,[s.id]:""}));}}
-                onKeyDown={e=>{if(e.key==="Enter"&&draft.trim()) submitSuggestionReply(s.id);}}
-                placeholder="Write a reply..."
-                style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:7,border:replyError?"1.5px solid #EF4444":"1.5px solid #E5E7EB",outline:"none",boxSizing:"border-box"}} />
-              <button onClick={()=>submitSuggestionReply(s.id)} disabled={!draft.trim()}
-                style={{background:draft.trim()?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:7,padding:"7px 14px",cursor:draft.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                Reply
-              </button>
-            </div>
-            {replyError&&<div style={{marginTop:6,fontSize:11,color:"#EF4444",fontWeight:600}}>⚠️ {replyError}</div>}
-          </div>
-        );
-      };
-
       return (
         <div>
           <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:"0 0 16px",display:"flex",alignItems:"center",gap:10}}>
@@ -5679,64 +5611,40 @@ export default function KFCanteen() {
             </button>
           </div>
 
-          <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 10px"}}>My Suggestion History</h3>
-          {myHistory.length===0 ? (
-            <Empty msg="No suggestions yet" sub="Anything you submit will show up here." />
+          <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 4px"}}>All Suggestions</h3>
+          <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>
+            {role==="superadmin" ? "You can see who submitted each one and who replied — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter and admin-reply identities are hidden here for privacy. They can still be looked up internally if a suggestion needs to be traced back (e.g. foul language)."}
+          </div>
+          {suggestions.length===0 ? (
+            <Empty msg="No suggestions yet" sub="Submissions from every role will show up here." />
           ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:28}}>
-              {myHistory.map(s=>{
-                const adminReplied = !suggestionNeedsAdminResponse(s.id) && suggestionReplies.some(r=>r.suggestionId===s.id);
+            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
+              {suggestions.map(s=>{
+                const needsResponse = suggestionNeedsAdminResponse(s.id);
+                const submitter = users.find(u=>u.id===s.userId);
                 return (
-                  <div key={s.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"12px 16px"}}>
+                  <div key={s.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                       <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
-                      <button onClick={()=>deleteSuggestion(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,fontSize:11,fontWeight:600,flexShrink:0}}>Delete</button>
+                      {s.userId===currentUser.id&&<button onClick={()=>deleteSuggestion(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,fontSize:11,fontWeight:600,flexShrink:0}}>Delete</button>}
                     </div>
-                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6}}>
-                      <span>{new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
-                      {adminReplied&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>💬 Administrator replied</span>}
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      {role==="superadmin"
+                        ? <span style={{fontWeight:600,color:PURPLE}}>{s.userName}</span>
+                        : <span style={{fontStyle:"italic"}}>Anonymous{submitter?` (${suggestionRoleLabel(submitter.role)})`:""}</span>}
+                      <span>· {new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
+                      {needsResponse
+                        ? <span style={{background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>🕓 Awaiting admin reply</span>
+                        : <span style={{background:"#D1FAE5",color:"#065F46",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>✅ Replied</span>}
                     </div>
-                    <Thread s={s} />
+                    <SuggestionThread s={s} suggestionReplies={suggestionReplies} replyDrafts={replyDrafts} replyErrors={replyErrors}
+                      currentUserId={currentUser.id} suggestionAuthorLabel={suggestionAuthorLabel} deleteSuggestionReply={deleteSuggestionReply}
+                      submitSuggestionReply={submitSuggestionReply} setReplyDrafts={setReplyDrafts} setReplyErrors={setReplyErrors} />
                   </div>
                 );
               })}
             </div>
           )}
-
-          <>
-              <h3 style={{fontSize:15,fontWeight:700,color:"#111",margin:"0 0 4px"}}>All Suggestions</h3>
-              <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>
-                {role==="superadmin" ? "You can see who submitted each one and who replied — use this if a suggestion needs to be traced back (e.g. foul language)." : "Submitter and admin-reply identities are hidden here for privacy. They can still be looked up internally if a suggestion needs to be traced back (e.g. foul language)."}
-              </div>
-              {suggestions.length===0 ? (
-                <Empty msg="No suggestions yet" sub="Submissions from every role will show up here." />
-              ) : (
-                <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
-                  {suggestions.map(s=>{
-                    const needsResponse = suggestionNeedsAdminResponse(s.id);
-                    const submitter = users.find(u=>u.id===s.userId);
-                    return (
-                      <div key={s.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                          <div style={{fontSize:13,color:"#111"}}>{s.content}</div>
-                          {s.userId===currentUser.id&&<button onClick={()=>deleteSuggestion(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#EF4444",padding:0,fontSize:11,fontWeight:600,flexShrink:0}}>Delete</button>}
-                        </div>
-                        <div style={{fontSize:11,color:"#9CA3AF",marginTop:6,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          {role==="superadmin"
-                            ? <span style={{fontWeight:600,color:PURPLE}}>{s.userName}</span>
-                            : <span style={{fontStyle:"italic"}}>Anonymous{submitter?` (${suggestionRoleLabel(submitter.role)})`:""}</span>}
-                          <span>· {new Date(s.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(s.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>
-                          {needsResponse
-                            ? <span style={{background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>🕓 Awaiting admin reply</span>
-                            : <span style={{background:"#D1FAE5",color:"#065F46",fontWeight:700,padding:"1px 8px",borderRadius:20,fontSize:10}}>✅ Replied</span>}
-                        </div>
-                        <Thread s={s} />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
         </div>
       );
     }
@@ -5768,8 +5676,81 @@ export default function KFCanteen() {
         {renderTab()}
       </div>
       {/* Remarks + drink-upsell prompt — lives at the top level so it can be
-          triggered from both the Short Order and Visitor Menu tabs */}
-      <AddOptionsModal />
+          triggered from both the Short Order and Visitor Menu tabs. Inlined
+          (not a separately-invoked component) so its inputs don't lose focus
+          on every keystroke -- see SuggestionThread's comment for why. */}
+      {addOptionsItem&&(()=>{
+        const { item } = addOptionsItem;
+        const hasSizes = item.sizes&&item.sizes.length>0;
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+            <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+              <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add to Cart</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>
+                    {item.name} · {hasSizes ? (addOptionsSize?`₱${addOptionsSize.price}`:`From ₱${Math.min(...item.sizes.map(s=>s.price))}`) : `₱${item.price}`}
+                  </div>
+                </div>
+                <button onClick={closeAddOptions} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
+              </div>
+              <div style={{padding:"22px"}}>
+                {hasSizes&&(
+                  <div style={{marginBottom:18}}>
+                    <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Select a size</label>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {item.sizes.map((s,i)=>{
+                        const selected = addOptionsSize&&addOptionsSize.label===s.label;
+                        return (
+                          <button key={i} onClick={()=>setAddOptionsSize(s)}
+                            style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,border:selected?`2px solid ${PURPLE}`:"1px solid #E5E7EB",background:selected?PURPLE_LIGHT:"#fff",cursor:"pointer",textAlign:"left"}}>
+                            <span style={{fontSize:13,fontWeight:600,color:selected?PURPLE:"#111"}}>{s.label}</span>
+                            <span style={{fontSize:13,fontWeight:700,color:selected?PURPLE:"#374151"}}>₱{s.price}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Remarks (optional)</label>
+                <textarea value={addOptionsRemarks} onChange={e=>setAddOptionsRemarks(e.target.value)} placeholder="e.g. no ice, extra spicy, less rice"
+                  rows={2} style={{width:"100%",fontSize:13,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",resize:"vertical",fontFamily:"inherit"}} />
+                {availableDrinks.length>0&&(
+                  <div style={{marginTop:18}}>
+                    <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Would you like to add a drink? (optional)</label>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {availableDrinks.map(d=>{
+                        const qty = addOptionsDrinks[d.id]||0;
+                        return (
+                          <div key={d.id} style={{display:"flex",alignItems:"center",gap:10,background:"#F9FAFB",borderRadius:10,padding:"8px 12px"}}>
+                            <span style={{fontSize:20}}>{d.isPhoto&&d.photo?<img src={d.photo} alt="" style={{width:28,height:28,borderRadius:6,objectFit:"cover"}} />:d.emoji}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:600,color:"#111"}}>{d.name}</div>
+                              <div style={{fontSize:11,color:"#6B7280"}}>₱{d.price}</div>
+                            </div>
+                            <button onClick={()=>setAddOptionsDrinks(p=>({...p,[d.id]:Math.max(0,(p[d.id]||0)-1)}))} disabled={qty===0}
+                              style={{width:26,height:26,borderRadius:7,border:"1px solid #E5E7EB",background:"#fff",cursor:qty===0?"not-allowed":"pointer",fontSize:14,color:"#374151",fontWeight:700}}>−</button>
+                            <span style={{minWidth:18,textAlign:"center",fontSize:13,fontWeight:700,color:"#111"}}>{qty}</span>
+                            <button onClick={()=>setAddOptionsDrinks(p=>({...p,[d.id]:(p[d.id]||0)+1}))}
+                              style={{width:26,height:26,borderRadius:7,border:"1px solid #E5E7EB",background:"#fff",cursor:"pointer",fontSize:14,color:"#374151",fontWeight:700}}>+</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div style={{display:"flex",gap:10,marginTop:20}}>
+                  <button onClick={closeAddOptions} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                  <button onClick={confirmAddOptions} disabled={hasSizes&&!addOptionsSize}
+                    style={{flex:2,background:(hasSizes&&!addOptionsSize)?"#C4B5FD":PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(hasSizes&&!addOptionsSize)?"not-allowed":"pointer",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                    <Icon name="plus" size={14} color="#fff" /> {hasSizes&&!addOptionsSize?"Select a size":"Add to Cart"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* Add/Edit Dish modal — lives at the top level (not inside the Manage Dishes tab) so it can also
           be opened from Manage Menu's "Create New Dish" shortcut regardless of the active tab */}
       {showAddDish&&(
