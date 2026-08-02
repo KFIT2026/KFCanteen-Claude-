@@ -63,6 +63,18 @@ const buildDateRange = () => {
 const DATE_RANGE = buildDateRange();
 const TODAY_DATE = new Date();
 const TODAY = getDateKey(TODAY_DATE);
+// After 1 PM, default the Menu tab to tomorrow's dishes instead of today's
+// (today's kitchen prep is already locked in by then). Skips Sunday, since
+// there's no Sunday menu, landing on Monday instead. "Today" badge, the 6 AM
+// order cutoff, and past/future logic all still key off the real TODAY_DATE
+// -- this only changes what date the tab opens to by default.
+const getDefaultMenuDate = () => {
+  if(TODAY_DATE.getHours() < 13) return TODAY_DATE;
+  const d = new Date(TODAY_DATE);
+  d.setDate(d.getDate()+1);
+  if(d.getDay()===0) d.setDate(d.getDate()+1); // Sunday -> Monday
+  return d;
+};
 const MEAL_CATS = ["ALL","BREAKFAST","LUNCH","SNACK"];
 
 
@@ -477,7 +489,7 @@ export default function KFCanteen() {
   // menu / filter state — keyed by traditional calendar week (e.g. "2026-30"), then Mon-Sat day name
   const [menu, setMenu] = useState({});
   useEffect(() => { fetchMenu().then(setMenu); }, []);
-  const [selectedDate, setSelectedDate] = useState(TODAY_DATE);
+  const [selectedDate, setSelectedDate] = useState(getDefaultMenuDate);
   const selectedDay = getDateKey(selectedDate); // the Mon-Sat day name for menu lookup
   const selectedWeekKey = getWeekKey(selectedDate);
   const [mealCat, setMealCat] = useState("ALL");
@@ -2016,26 +2028,6 @@ export default function KFCanteen() {
     </div>
   );
 
-  /* ════════════════════════════════════════
-     MENU + FILTER BAR
-  ════════════════════════════════════════ */
-  const MenuFilterBar = () => (
-    <div style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-      <div style={{display:"flex",gap:4}}>
-        {["Weekly Menu","Groceries"].map(v=>(
-          <button key={v} onClick={()=>{setMenuView(v);setSearchQ("");setMealCat("ALL");setOtherCat("All");}}
-            style={{padding:"7px 18px",borderRadius:8,border:"1px solid #E5E7EB",background:menuView===v?"#fff":BG,fontWeight:menuView===v?600:400,fontSize:13,color:menuView===v?"#111":"#6B7280",cursor:"pointer",boxShadow:menuView===v?"0 1px 4px rgba(0,0,0,0.08)":"none"}}>
-            {v}
-          </button>
-        ))}
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:8,border:"1px solid #E5E7EB",borderRadius:9,padding:"7px 12px",background:BG,minWidth:180}}>
-        <Icon name="search" size={15} color="#9CA3AF" />
-        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search items..."
-          style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
-      </div>
-    </div>
-  );
 
   /* ── Calendar Date Picker ── */
   const DatePicker = () => {
@@ -2234,7 +2226,24 @@ export default function KFCanteen() {
             🔒 {currentUser.plant} is closed for today. Dishes you order now will be scheduled for tomorrow instead.
           </div>
         )}
-        <MenuFilterBar />
+        {/* Inlined (not a separately-invoked component) so the search input
+            doesn't lose focus on every keystroke -- see SuggestionThread's
+            comment near the top of the file for why. */}
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:4}}>
+            {["Weekly Menu","Groceries"].map(v=>(
+              <button key={v} onClick={()=>{setMenuView(v);setSearchQ("");setMealCat("ALL");setOtherCat("All");}}
+                style={{padding:"7px 18px",borderRadius:8,border:"1px solid #E5E7EB",background:menuView===v?"#fff":BG,fontWeight:menuView===v?600:400,fontSize:13,color:menuView===v?"#111":"#6B7280",cursor:"pointer",boxShadow:menuView===v?"0 1px 4px rgba(0,0,0,0.08)":"none"}}>
+                {v}
+              </button>
+            ))}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,border:"1px solid #E5E7EB",borderRadius:9,padding:"7px 12px",background:BG,minWidth:180}}>
+            <Icon name="search" size={15} color="#9CA3AF" />
+            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search items..."
+              style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
+          </div>
+        </div>
         {menuView==="Weekly Menu" ? (
           <div>
             <DatePicker />
