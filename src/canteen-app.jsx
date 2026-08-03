@@ -449,6 +449,23 @@ export default function KFCanteen() {
   useEffect(() => {
     fetchUsers().then(rows => { setUsers(rows); setUsersLoading(false); });
   }, []);
+  // Restore the logged-in session after a browser refresh (currentUser is
+  // otherwise pure in-memory React state, so a refresh used to always bounce
+  // back to the login screen). Runs once, right after users finishes its
+  // first load -- not on later realtime updates to `users`, since usersLoading
+  // only flips true->false a single time. Intentionally skips the login
+  // flow's credit-reset-on-16th/1st check: repeating that on every
+  // refresh would let a user reset their balance back to full as many times
+  // as they refresh the page that day.
+  useEffect(() => {
+    if(usersLoading || currentUser) return;
+    const savedId = localStorage.getItem("kfcanteen_uid");
+    if(!savedId) return;
+    const found = users.find(u=>u.id===savedId && u.registered);
+    if(!found){ localStorage.removeItem("kfcanteen_uid"); return; }
+    setCurrentUser(found);
+    setActiveTab(found.role==="user"?"menu":(found.role==="admin"||found.role==="superadmin")?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
+  }, [usersLoading]);
   const [creditNotif, setCreditNotif] = useState(false);
   const [editCreditId, setEditCreditId] = useState(null);
   const [editCreditVal, setEditCreditVal] = useState("");
@@ -716,17 +733,17 @@ export default function KFCanteen() {
     const usernameInput = loginForm.username.trim();
     const found = users.find(u=>u.username===usernameInput && u.password===loginForm.password && u.registered);
     if (found) {
-      // auto-reset credit on 15th or last day of month
+      // auto-reset credit on the 16th or the 1st of the month
       const today = new Date();
       const day = today.getDate();
-      const lastDay = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
       let updatedUser = found;
-      if(day===15||day===lastDay) {
+      if(day===16||day===1) {
         updatedUser = {...found, creditBalance: found.creditLimit};
         setUsers(prev=>prev.map(u=>u.id===found.id?updatedUser:u));
         dbUpdateUser(found.id,{creditBalance:found.creditLimit});
       }
       setCurrentUser(updatedUser);
+      localStorage.setItem("kfcanteen_uid", updatedUser.id);
       setLoginError("");
       setActiveTab(found.role==="user"?"menu":(found.role==="admin"||found.role==="superadmin")?"menu":found.role==="staff-admin"?"mgmenu":"mgorders");
       if(updatedUser.creditBalance < 100) setCreditNotif(true);
@@ -743,7 +760,7 @@ export default function KFCanteen() {
       }
     }
   };
-  const handleLogout = () => { setCurrentUser(null); setLoginForm({username:"",password:""}); setCart([]); setLoginError(""); setCreditNotif(false); setSidebarOpen(false); };
+  const handleLogout = () => { setCurrentUser(null); localStorage.removeItem("kfcanteen_uid"); setLoginForm({username:"",password:""}); setCart([]); setLoginError(""); setCreditNotif(false); setSidebarOpen(false); };
 
   /* ── DOWNLOAD ORDERS AS XLSX ── */
   const downloadOrdersExcel = (ordersToExport, date, filterType) => {
@@ -4877,7 +4894,7 @@ export default function KFCanteen() {
             </table>
           </div>
           <div style={{marginTop:12,background:"#F0FDF4",borderRadius:10,border:"1px solid #A7F3D0",padding:"10px 14px",fontSize:12,color:"#065F46"}}>
-            💡 Credit balances auto-reset to each user's limit on the <strong>15th</strong> and <strong>last day</strong> of every month.
+            💡 Credit balances auto-reset to each user's limit on the <strong>16th</strong> and <strong>1st</strong> of every month.
           </div>
 
           {/* Reset Account modal — resetTargets is an array so this covers both the single-row
@@ -5685,7 +5702,7 @@ export default function KFCanteen() {
             <span style={{fontSize:18}}>⚠️</span>
             <div>
               <span style={{fontWeight:700,fontSize:13,color:"#92400E"}}>Low Credit Balance! </span>
-              <span style={{fontSize:13,color:"#92400E"}}>Your remaining credit is <strong>₱{currentUser.creditBalance}</strong> — below ₱100. Resets on the 15th and last day of each month.</span>
+              <span style={{fontSize:13,color:"#92400E"}}>Your remaining credit is <strong>₱{currentUser.creditBalance}</strong> — below ₱100. Resets on the 16th and 1st of each month.</span>
             </div>
           </div>
           <button onClick={()=>setCreditNotif(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#92400E",flexShrink:0}}>✕</button>
