@@ -63,13 +63,13 @@ const buildDateRange = () => {
 const DATE_RANGE = buildDateRange();
 const TODAY_DATE = new Date();
 const TODAY = getDateKey(TODAY_DATE);
-// After 1 PM, default the Menu tab to tomorrow's dishes instead of today's
-// (today's kitchen prep is already locked in by then). Skips Sunday, since
-// there's no Sunday menu, landing on Monday instead. "Today" badge, the 6 AM
-// order cutoff, and past/future logic all still key off the real TODAY_DATE
-// -- this only changes what date the tab opens to by default.
+// After 8 PM, default the Menu tab to tomorrow's dishes instead of today's
+// (today's ordering windows are all closed by then). Skips Sunday, since
+// there's no Sunday menu, landing on Monday instead. "Today" badge, the
+// per-category order cutoffs, and past/future logic all still key off the
+// real TODAY_DATE -- this only changes what date the tab opens to by default.
 const getDefaultMenuDate = () => {
-  if(TODAY_DATE.getHours() < 13) return TODAY_DATE;
+  if(TODAY_DATE.getHours() < 20) return TODAY_DATE;
   const d = new Date(TODAY_DATE);
   d.setDate(d.getDate()+1);
   if(d.getDay()===0) d.setDate(d.getDate()+1); // Sunday -> Monday
@@ -534,6 +534,7 @@ export default function KFCanteen() {
 
   // other products category
   const [orderSearch, setOrderSearch] = useState("");
+  const [orderPlantFilter, setOrderPlantFilter] = useState("All");
   const [paymentModal, setPaymentModal] = useState(null);
   const [otherCat, setOtherCat] = useState("All");
   const [filterCat, setFilterCat] = useState("All");
@@ -1054,13 +1055,16 @@ export default function KFCanteen() {
     // items also carry .cat but are exempt the same way Groceries is (see
     // addToCart's fixedMenu flag) since they're available anytime.
     const nonAdvanceDishes = cart.filter(c=>c.cat&&!c.scheduledDate&&!c.fixedMenu);
-    // The Menu screen already blocks adding a dish to cart once the 6 AM
-    // cutoff passes, but guard here too in case one slipped in anyway (e.g.
-    // added right before the cutoff, checked out after) or the plant closed
-    // since it was added — roll it onto tomorrow rather than blocking the
-    // whole order or silently keeping it as a "today" order that can't
-    // actually be fulfilled today.
-    const needsRollover = nonAdvanceDishes.length>0 && (!!isPlantClosed(plant) || isPastMenuCutoff());
+    // The Menu screen already blocks adding a dish to cart once its own
+    // category's cutoff passes, but guard here too in case one slipped in
+    // anyway (e.g. added right before its cutoff, checked out after) or the
+    // plant closed since it was added — roll it onto tomorrow rather than
+    // blocking the whole order or silently keeping it as a "today" order
+    // that can't actually be fulfilled today. If ANY item in the cart is
+    // past its own cutoff, the WHOLE order rolls to tomorrow (simplest
+    // behavior — a cart is one order with one date, so a still-orderable
+    // item riding along with a cut-off one also moves to tomorrow).
+    const needsRollover = nonAdvanceDishes.length>0 && (!!isPlantClosed(plant) || nonAdvanceDishes.some(c=>isPastMenuCutoff(c.cat)));
     const orderDate = needsRollover
       ? toDateKey(new Date(Date.now()+86400000))
       : toDateKey(new Date());
@@ -1373,13 +1377,15 @@ export default function KFCanteen() {
   const isPlantClosed = (plant, date=TODAY_KEY) =>
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
 
-  // Today's weekly-menu dishes can only be ordered before 6:00 AM same day —
-  // after that they're simply unavailable to order for today (not rolled
-  // forward — that's what Close Canteen's plant-closed rollover is for).
-  // Doesn't apply to advance (scheduled) orders, and never applies to
-  // Groceries, which aren't prepped/cooked so there's no cutoff reason for
-  // them.
-  const isPastMenuCutoff = () => new Date().getHours() >= 6;
+  // Today's weekly-menu dishes can only be ordered before their category's
+  // cutoff same day — after that they're simply unavailable to order for
+  // today (not rolled forward — that's what Close Canteen's plant-closed
+  // rollover is for). Lunch needs the kitchen's early commitment; Breakfast
+  // and Snack are sourced more flexibly so they get a later cutoff. Doesn't
+  // apply to advance (scheduled) orders, and never applies to Groceries,
+  // which aren't prepped/cooked so there's no cutoff reason for them.
+  const CUTOFF_HOUR_BY_CAT = { LUNCH:8, BREAKFAST:13, SNACK:13 };
+  const isPastMenuCutoff = (cat) => new Date().getHours() >= (CUTOFF_HOUR_BY_CAT[cat] ?? 8);
 
   // "qty" below means "amount in the dish's own serving_unit" — literal grams
   // for weight-tracked dishes, a plain piece/cup count otherwise.
@@ -1990,7 +1996,7 @@ export default function KFCanteen() {
             const isActive = activeTab===n.id;
             return (
               <button key={n.id}
-                onClick={()=>{ setActiveTab(n.id); setSidebarOpen(false); }}
+                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); } setActiveTab(n.id); setSidebarOpen(false); }}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",border:"none",background:isActive?PURPLE_LIGHT:"transparent",cursor:"pointer",textAlign:"left",borderLeft:`3px solid ${isActive?PURPLE:"transparent"}`,transition:"all 0.1s"}}>
                 <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
                 <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
@@ -2216,12 +2222,14 @@ export default function KFCanteen() {
     if(activeTab==="menu") return (
       <div>
         <Hero />
-        {menuView==="Weekly Menu"&&isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff()&&(
+        {menuView==="Weekly Menu"&&isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff("LUNCH")&&(
           <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
-            ⏰ Today's ordering cutoff (6:00 AM) has passed — today's dishes are no longer available to order. Groceries are unaffected, and you can still order dishes for a future date.
+            ⏰ {isPastMenuCutoff("BREAKFAST")
+              ? "Today's ordering cutoff has passed for all meal types — today's dishes are no longer available to order."
+              : "Today's Lunch ordering cutoff (8:00 AM) has passed — Lunch dishes are no longer available today. Breakfast & Snack items can still be ordered until 1:00 PM."} Groceries are unaffected, and you can still order dishes for a future date.
           </div>
         )}
-        {menuView==="Weekly Menu"&&currentUser.plant&&isSameDay(selectedDate,TODAY_DATE)&&!isPastMenuCutoff()&&isPlantClosed(currentUser.plant)&&(
+        {menuView==="Weekly Menu"&&currentUser.plant&&isSameDay(selectedDate,TODAY_DATE)&&!isPastMenuCutoff("BREAKFAST")&&isPlantClosed(currentUser.plant)&&(
           <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
             🔒 {currentUser.plant} is closed for today. Dishes you order now will be scheduled for tomorrow instead.
           </div>
@@ -2253,7 +2261,7 @@ export default function KFCanteen() {
                 {visibleItems.map(item=><FoodCard key={item.id} item={item} onAdd={addToCart}
                   isPastDate={isPast(selectedDate)&&!isSameDay(selectedDate,TODAY_DATE)}
                   scheduledDate={isFuture(selectedDate)?selectedDate:null}
-                  cutoffPassed={isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff()} />)}
+                  cutoffPassed={isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff(item.cat)} />)}
               </div>
             )}
           </div>
@@ -2756,7 +2764,9 @@ export default function KFCanteen() {
     /* ── MANAGE ORDERS (staff/admin) ── */
     if(activeTab==="mgorders") {
       const filteredOrders = orders.filter(o=>{
-        const plantMatch = (role==="staff") ? (o.plant===currentUser.plant) : true;
+        const plantMatch = (role==="staff") ? (o.plant===currentUser.plant)
+          : (role==="staff-admin") ? (orderPlantFilter==="All"||o.plant===orderPlantFilter)
+          : true;
         const searchMatch = o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
           o.user.toLowerCase().includes(orderSearch.toLowerCase());
         return plantMatch && searchMatch;
@@ -3077,8 +3087,8 @@ export default function KFCanteen() {
           {role==="staff-admin"&&(
             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
               {["All",...PLANTS].map(p=>(
-                <button key={p} onClick={()=>setOrderSearch(p==="All"?"":p)}
-                  style={{padding:"5px 14px",borderRadius:20,border:"1px solid #E5E7EB",background:orderSearch===p||(p==="All"&&!orderSearch)?PURPLE:"#fff",color:orderSearch===p||(p==="All"&&!orderSearch)?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                <button key={p} onClick={()=>setOrderPlantFilter(p)}
+                  style={{padding:"5px 14px",borderRadius:20,border:"1px solid #E5E7EB",background:orderPlantFilter===p?PURPLE:"#fff",color:orderPlantFilter===p?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
                   {p}
                 </button>
               ))}
@@ -5909,7 +5919,7 @@ export default function KFCanteen() {
               )}
               {(()=>{
                 const cartHasNonAdvanceDish = cart.some(c=>c.cat&&!c.scheduledDate&&!c.fixedMenu);
-                const cutoffPassed = cartHasNonAdvanceDish && isPastMenuCutoff();
+                const cutoffPassed = cart.some(c=>c.cat&&!c.scheduledDate&&!c.fixedMenu&&isPastMenuCutoff(c.cat));
                 return (
               <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
                 {PLANTS.map(p=>{
