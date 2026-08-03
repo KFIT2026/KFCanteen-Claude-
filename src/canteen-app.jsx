@@ -1184,7 +1184,15 @@ export default function KFCanteen() {
     dbInsertOrder(order);
     deductInventoryForItems(otcCart);
     if(paymentType==="Credit" && isEmployee){
-      const newBal = Math.max(0,(otcCustomer.creditBalance||0)-otcCartTotal);
+      // Read the LIVE balance from `users`, not otcCustomer.creditBalance --
+      // otcCustomer is a one-time snapshot taken when staff searched/selected
+      // the employee, and never refreshed afterward. Serving the same person
+      // twice in one counter visit without clicking "Start Over" between
+      // sales would otherwise compute every sale's deduction from the same
+      // stale pre-first-sale balance, silently losing whatever earlier sales
+      // in that visit had already deducted.
+      const liveUser = users.find(u=>u.id===otcCustomer.id);
+      const newBal = Math.max(0,(liveUser?.creditBalance||0)-otcCartTotal);
       setUsers(prev=>prev.map(u=>u.id===otcCustomer.id?{...u,creditBalance:newBal}:u));
       dbUpdateUser(otcCustomer.id, { creditBalance:newBal });
     }
@@ -5455,7 +5463,12 @@ export default function KFCanteen() {
       const employeeMatches = (otcType==="employee"&&otcSearch.trim())
         ? users.filter(u=>u.isEmployee&&(((u.idNumber||"").toLowerCase().includes(otcSearch.toLowerCase()))||u.name.toLowerCase().includes(otcSearch.toLowerCase()))).slice(0,8)
         : [];
-      const otcInsufficient = otcType==="employee"&&otcCustomer&&(otcCustomer.creditBalance||0)<otcCartTotal;
+      // Re-derive the employee's live balance from `users` instead of trusting
+      // otcCustomer.creditBalance, which is a one-time snapshot from when
+      // staff searched/selected them and goes stale after any sale within
+      // the same counter visit (see completeOtcSale for the full story).
+      const otcCustomerLive = (otcType==="employee"&&otcCustomer) ? (users.find(u=>u.id===otcCustomer.id)||otcCustomer) : otcCustomer;
+      const otcInsufficient = otcType==="employee"&&otcCustomerLive&&(otcCustomerLive.creditBalance||0)<otcCartTotal;
 
       return (
         <div>
@@ -5609,7 +5622,7 @@ export default function KFCanteen() {
                 <div style={{padding:"22px"}}>
                   {otcType==="employee"&&(
                     <div style={{borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,border:"1px solid "+(otcInsufficient?"#FCD34D":"#A7F3D0"),background:otcInsufficient?"#FEF3C7":"#F0FDF4",color:otcInsufficient?"#92400E":"#065F46"}}>
-                      💳 Credit Balance: ₱{(otcCustomer.creditBalance||0).toLocaleString()}
+                      💳 Credit Balance: ₱{(otcCustomerLive.creditBalance||0).toLocaleString()}
                       {otcInsufficient&&<div style={{marginTop:4,fontWeight:600}}>⚠️ Not enough for Credit — Cash only.</div>}
                     </div>
                   )}
