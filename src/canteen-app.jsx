@@ -1394,15 +1394,16 @@ export default function KFCanteen() {
   const isPlantClosed = (plant, date=TODAY_KEY) =>
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
 
-  // Today's weekly-menu dishes can only be ordered before their category's
-  // cutoff same day — after that they're simply unavailable to order for
-  // today (not rolled forward — that's what Close Canteen's plant-closed
-  // rollover is for). Lunch needs the kitchen's early commitment; Breakfast
-  // and Snack are sourced more flexibly so they get a later cutoff. Doesn't
-  // apply to advance (scheduled) orders, and never applies to Groceries,
-  // which aren't prepped/cooked so there's no cutoff reason for them.
-  const CUTOFF_HOUR_BY_CAT = { LUNCH:8, BREAKFAST:13, SNACK:13 };
-  const isPastMenuCutoff = (cat) => new Date().getHours() >= (CUTOFF_HOUR_BY_CAT[cat] ?? 8);
+  // Only Lunch has a same-day ordering cutoff -- it needs the kitchen's
+  // early commitment. Breakfast and Snack are sourced more flexibly and
+  // have no cutoff at all (always orderable same-day, no entry below).
+  // Past cutoff, Lunch is simply unavailable to order for today (not
+  // rolled forward — that's what Close Canteen's plant-closed rollover is
+  // for). Doesn't apply to advance (scheduled) orders, and never applies
+  // to Groceries, which aren't prepped/cooked so there's no cutoff reason
+  // for them.
+  const CUTOFF_HOUR_BY_CAT = { LUNCH:13 };
+  const isPastMenuCutoff = (cat) => cat in CUTOFF_HOUR_BY_CAT && new Date().getHours() >= CUTOFF_HOUR_BY_CAT[cat];
 
   // "qty" below means "amount in the dish's own serving_unit" — literal grams
   // for weight-tracked dishes, a plain piece/cup count otherwise.
@@ -2241,12 +2242,10 @@ export default function KFCanteen() {
         <Hero />
         {menuView==="Weekly Menu"&&isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff("LUNCH")&&(
           <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
-            ⏰ {isPastMenuCutoff("BREAKFAST")
-              ? "Today's ordering cutoff has passed for all meal types — today's dishes are no longer available to order."
-              : "Today's Lunch ordering cutoff (8:00 AM) has passed — Lunch dishes are no longer available today. Breakfast & Snack items can still be ordered until 1:00 PM."} Groceries are unaffected, and you can still order dishes for a future date.
+            ⏰ Today's Lunch ordering cutoff (1:00 PM) has passed — Lunch dishes are no longer available today. Breakfast & Snack items can still be ordered anytime today. Groceries are unaffected, and you can still order dishes for a future date.
           </div>
         )}
-        {menuView==="Weekly Menu"&&currentUser.plant&&isSameDay(selectedDate,TODAY_DATE)&&!isPastMenuCutoff("BREAKFAST")&&isPlantClosed(currentUser.plant)&&(
+        {menuView==="Weekly Menu"&&currentUser.plant&&isSameDay(selectedDate,TODAY_DATE)&&isPlantClosed(currentUser.plant)&&(
           <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
             🔒 {currentUser.plant} is closed for today. Dishes you order now will be scheduled for tomorrow instead.
           </div>
