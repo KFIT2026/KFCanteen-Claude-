@@ -2154,8 +2154,8 @@ export default function KFCanteen() {
         onMouseEnter={e=>e.currentTarget.style.boxShadow=cantOrder?"none":"0 4px 16px rgba(107,33,168,0.10)"}
         onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
         <div style={{height:130,background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
-          {item.isPhoto&&item.img
-            ? <img src={item.img} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} />
+          {item.isPhoto&&(item.img||item.photo)
+            ? <img src={item.img||item.photo} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} />
             : <span style={{fontSize:54,lineHeight:1}}>{item.img||item.emoji}</span>
           }
           {item.cat&&<span style={{position:"absolute",top:8,left:8,background:PURPLE,color:"#fff",fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20,letterSpacing:"0.5px"}}>{item.cat}</span>}
@@ -2393,8 +2393,8 @@ export default function KFCanteen() {
           <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
             {cart.map(item=>(
               <div key={item._key} style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid #F3F4F6"}}>
-                {item.isPhoto&&item.img
-                  ? <img src={item.img} alt={item.name} style={{width:40,height:40,borderRadius:8,objectFit:"cover",flexShrink:0}} />
+                {item.isPhoto&&(item.img||item.photo)
+                  ? <img src={item.img||item.photo} alt={item.name} style={{width:40,height:40,borderRadius:8,objectFit:"cover",flexShrink:0}} />
                   : <span style={{fontSize:28}}>{item.img||item.emoji}</span>
                 }
                 <div style={{flex:1}}>
