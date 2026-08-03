@@ -1231,14 +1231,19 @@ export default function KFCanteen() {
     // mark served + save payment type
     setOrders(prev=>prev.map(o=>o.id===orderId?{...o,paymentType}:o));
     dbUpdateOrder(orderId, { paymentType });
-    // if credit, deduct from user's credit balance
-    if(paymentType==="Credit"){
+    // if credit, deduct from user's credit balance -- match by the order's
+    // stable userId, not by name. order.user is a frozen name snapshot from
+    // when the order was placed, so matching on it breaks silently (no
+    // deduction, no error) if the employee's name is ever edited afterward,
+    // and worse, would deduct EVERY user sharing that name if two employees
+    // happen to have the same one.
+    if(paymentType==="Credit"&&order.userId){
       setUsers(prev=>prev.map(u=>{
-        if(u.name!==order.user) return u;
+        if(u.id!==order.userId) return u;
         const newBal = Math.max(0,(u.creditBalance||0)-order.total);
         dbUpdateUser(u.id, { creditBalance: newBal });
         // update currentUser too if it's them
-        if(currentUser&&currentUser.name===u.name){
+        if(currentUser&&currentUser.id===u.id){
           const updated = {...currentUser, creditBalance:newBal};
           setCurrentUser(updated);
           if(newBal<100) setCreditNotif(true);
