@@ -45,6 +45,19 @@ const formatDateFull  = (date) => date.toLocaleDateString("en-PH",{month:"long",
 const isSameDay = (a,b) => a.toDateString()===b.toDateString();
 const isPast    = (date) => { const t=new Date(); t.setHours(0,0,0,0); const d=new Date(date); d.setHours(0,0,0,0); return d<t; };
 const isFuture  = (date) => { const t=new Date(); t.setHours(0,0,0,0); const d=new Date(date); d.setHours(0,0,0,0); return d>t; };
+// order.time is a display string like "5:46 AM" (from toLocaleTimeString) --
+// not sortable as plain text since it breaks across the AM/PM boundary.
+// Combines it with order.date into an actual timestamp for chronological sort.
+const parseOrderTimestamp = (order) => {
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec((order.time||"").trim());
+  if(!m) return new Date(order.date||0).getTime();
+  let h = parseInt(m[1],10);
+  const min = parseInt(m[2],10);
+  const ampm = m[3].toUpperCase();
+  if(ampm==="PM"&&h!==12) h+=12;
+  if(ampm==="AM"&&h===12) h=0;
+  return new Date(`${order.date}T${String(h).padStart(2,"0")}:${String(min).padStart(2,"0")}:00`).getTime();
+};
 
 // build 2 weeks of Mon-Sat dates (1 past week + current/next week)
 const buildDateRange = () => {
@@ -193,6 +206,7 @@ const NAV = {
     { id:"mgshortorder",label:"Manage Short Order", icon:"manage" },
     { id:"mgvisitormenu",label:"Manage Visitor Menu", icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
+    { id:"otc",       label:"Over the Counter",icon:"register" },
     { id:"mgproducts",label:"Manage Groceries", icon:"products" },
     { id:"rawmaterials",label:"Raw Materials", icon:"scale" },
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
@@ -208,6 +222,7 @@ const NAV = {
     { id:"mgshortorder",label:"Manage Short Order", icon:"manage" },
     { id:"mgvisitormenu",label:"Manage Visitor Menu", icon:"manage" },
     { id:"mgorders",  label:"Manage Orders",   icon:"manage" },
+    { id:"otc",       label:"Over the Counter",icon:"register" },
     { id:"mgproducts",label:"Manage Groceries", icon:"products" },
     { id:"rawmaterials",label:"Raw Materials", icon:"scale" },
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
@@ -553,6 +568,7 @@ export default function KFCanteen() {
   const [orderSearch, setOrderSearch] = useState("");
   const [orderPlantFilter, setOrderPlantFilter] = useState("All");
   const [paymentModal, setPaymentModal] = useState(null);
+  const [orderDetailModal, setOrderDetailModal] = useState(null);
   const [otherCat, setOtherCat] = useState("All");
   const [filterCat, setFilterCat] = useState("All");
   const [otherProducts, setOtherProducts] = useState([]);
@@ -2995,6 +3011,42 @@ export default function KFCanteen() {
               </div>
             );
           })()}
+          {/* order item detail modal */}
+          {orderDetailModal&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}} onClick={()=>setOrderDetailModal(null)}>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:440,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{orderDetailModal.id}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>{orderDetailModal.user} · {orderDetailModal.date} · {orderDetailModal.time}</div>
+                  </div>
+                  <button onClick={()=>setOrderDetailModal(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>×</button>
+                </div>
+                <div style={{padding:"18px 22px",overflowY:"auto"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+                    {orderDetailModal.items.map((it,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,paddingBottom:12,borderBottom:i<orderDetailModal.items.length-1?"1px solid #F3F4F6":"none"}}>
+                        <div>
+                          <div style={{fontWeight:600,fontSize:13,color:"#111"}}>
+                            {it.name}
+                            {it.size&&<span style={{marginLeft:6,fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 6px",borderRadius:8}}>{it.size}</span>}
+                          </div>
+                          <div style={{fontSize:12,color:"#6B7280",marginTop:3}}>₱{it.price} × {it.qty}</div>
+                          {it.scheduledDate&&<div style={{fontSize:11,color:PURPLE,marginTop:3}}>📅 {it.scheduledDate}</div>}
+                          {it.remarks&&<div style={{fontSize:11,color:"#9CA3AF",fontStyle:"italic",marginTop:3}}>📝 {it.remarks}</div>}
+                        </div>
+                        <div style={{fontWeight:700,fontSize:14,color:PURPLE,whiteSpace:"nowrap"}}>₱{(it.price*it.qty)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:14,borderTop:"2px solid #F3F4F6"}}>
+                    <span style={{fontWeight:700,fontSize:14,color:"#111"}}>Total</span>
+                    <span style={{fontWeight:800,fontSize:19,color:PURPLE}}>₱{orderDetailModal.total}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {/* payment modal */}
           {/* Plant selection modal */}
       {/* payment modal */}
@@ -3149,9 +3201,14 @@ export default function KFCanteen() {
                     const pa = a.paymentType ? 1 : 0;
                     const pb = b.paymentType ? 1 : 0;
                     if(pa!==pb) return pa-pb;
-                    return (a.time||"").localeCompare(b.time||"");
+                    // Within each group, oldest-placed first. order.time is a
+                    // display string like "5:46 AM" -- comparing it as text
+                    // breaks across the AM/PM boundary (e.g. "07:35 PM" sorts
+                    // before "11:12 AM" as plain strings), so parse it into an
+                    // actual date+time before comparing.
+                    return parseOrderTimestamp(a) - parseOrderTimestamp(b);
                   }).map(order=>(
-                    <tr key={order.id} style={{borderBottom:"1px solid #F3F4F6"}}>
+                    <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer"}}>
                       <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
                       <td style={{padding:"11px 14px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>
                         {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
@@ -3182,7 +3239,7 @@ export default function KFCanteen() {
                           : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
                         }
                       </td>
-                      <td style={{padding:"11px 14px"}}>
+                      <td style={{padding:"11px 14px"}} onClick={e=>e.stopPropagation()}>
                         {!order.paymentType
                           ? <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
                               style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
