@@ -2768,7 +2768,8 @@ export default function KFCanteen() {
           : (role==="staff-admin") ? (orderPlantFilter==="All"||o.plant===orderPlantFilter)
           : true;
         const searchMatch = o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
-          o.user.toLowerCase().includes(orderSearch.toLowerCase());
+          o.user.toLowerCase().includes(orderSearch.toLowerCase()) ||
+          (o.plant||"").toLowerCase().includes(orderSearch.toLowerCase());
         return plantMatch && searchMatch;
       });
       return (
@@ -3034,7 +3035,7 @@ export default function KFCanteen() {
               {/* search bar */}
               <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
                 <Icon name="search" size={15} color="#9CA3AF" />
-                <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name or order ID..."
+                <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name, order ID, or plant..."
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
               </div>
               {(isAdminLike||role==="staff-admin"||role==="staff")&&(
@@ -3101,7 +3102,7 @@ export default function KFCanteen() {
           )}
 
           {filteredOrders.length===0 ? (
-            <Empty msg="No orders found" sub="Try a different name or order ID." />
+            <Empty msg="No orders found" sub="Try a different name, order ID, or plant." />
           ) : (
             <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
