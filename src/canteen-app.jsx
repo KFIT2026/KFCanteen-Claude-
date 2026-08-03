@@ -1423,16 +1423,13 @@ export default function KFCanteen() {
   const isPlantClosed = (plant, date=TODAY_KEY) =>
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
 
-  // Only Lunch has a same-day ordering cutoff -- it needs the kitchen's
-  // early commitment. Breakfast and Snack are sourced more flexibly and
-  // have no cutoff at all (always orderable same-day, no entry below).
-  // Past cutoff, Lunch is simply unavailable to order for today (not
-  // rolled forward — that's what Close Canteen's plant-closed rollover is
-  // for). Doesn't apply to advance (scheduled) orders, and never applies
-  // to Groceries, which aren't prepped/cooked so there's no cutoff reason
-  // for them.
-  const CUTOFF_HOUR_BY_CAT = { LUNCH:13 };
-  const isPastMenuCutoff = (cat) => cat in CUTOFF_HOUR_BY_CAT && new Date().getHours() >= CUTOFF_HOUR_BY_CAT[cat];
+  // No category has a same-day ordering cutoff -- Breakfast, Lunch, and
+  // Snack are all orderable any time same-day. Same-day dishes can still
+  // roll forward to tomorrow if the plant is closed (Close Canteen), just
+  // never due to time of day. Kept as a function (always false) rather than
+  // deleted outright since plant-closed rollover logic below still checks
+  // it alongside isPlantClosed.
+  const isPastMenuCutoff = () => false;
 
   // "qty" below means "amount in the dish's own serving_unit" — literal grams
   // for weight-tracked dishes, a plain piece/cup count otherwise.
@@ -2269,11 +2266,6 @@ export default function KFCanteen() {
     if(activeTab==="menu") return (
       <div>
         <Hero />
-        {menuView==="Weekly Menu"&&isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff("LUNCH")&&(
-          <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
-            ⏰ Today's Lunch ordering cutoff (1:00 PM) has passed — Lunch dishes are no longer available today. Breakfast & Snack items can still be ordered anytime today. Groceries are unaffected, and you can still order dishes for a future date.
-          </div>
-        )}
         {menuView==="Weekly Menu"&&currentUser.plant&&isSameDay(selectedDate,TODAY_DATE)&&isPlantClosed(currentUser.plant)&&(
           <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
             🔒 {currentUser.plant} is closed for today. Dishes you order now will be scheduled for tomorrow instead.
