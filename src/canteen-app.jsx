@@ -572,6 +572,8 @@ export default function KFCanteen() {
   // other products category
   const [orderSearch, setOrderSearch] = useState("");
   const [orderPlantFilter, setOrderPlantFilter] = useState("All");
+  const [orderShowAllDates, setOrderShowAllDates] = useState(false);
+  const [orderDateFilter, setOrderDateFilter] = useState(toDateKey(new Date()));
   const [paymentModal, setPaymentModal] = useState(null);
   const [orderDetailModal, setOrderDetailModal] = useState(null);
   const [otherCat, setOtherCat] = useState("All");
@@ -2071,7 +2073,7 @@ export default function KFCanteen() {
             const isActive = activeTab===n.id;
             return (
               <button key={n.id}
-                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); } setActiveTab(n.id); setSidebarOpen(false); }}
+                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderShowAllDates(false); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",border:"none",background:isActive?PURPLE_LIGHT:"transparent",cursor:"pointer",textAlign:"left",borderLeft:`3px solid ${isActive?PURPLE:"transparent"}`,transition:"all 0.1s"}}>
                 <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
                 <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
@@ -2846,7 +2848,8 @@ export default function KFCanteen() {
         const searchMatch = o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
           o.user.toLowerCase().includes(orderSearch.toLowerCase()) ||
           (o.plant||"").toLowerCase().includes(orderSearch.toLowerCase());
-        return plantMatch && searchMatch;
+        const dateMatch = orderShowAllDates || o.date===orderDateFilter;
+        return plantMatch && searchMatch && dateMatch;
       });
       return (
         <div>
@@ -3186,6 +3189,19 @@ export default function KFCanteen() {
             </div>;
           })()}
 
+          {/* Date filter */}
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14,flexWrap:"wrap"}}>
+            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:13,color:"#374151",fontWeight:600}}>
+              <input type="checkbox" checked={orderShowAllDates} onChange={e=>setOrderShowAllDates(e.target.checked)}
+                style={{width:15,height:15,cursor:"pointer"}} />
+              Show all records (ignore date)
+            </label>
+            {!orderShowAllDates&&(
+              <input type="date" value={orderDateFilter} onChange={e=>setOrderDateFilter(e.target.value)}
+                style={{padding:"7px 12px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",background:"#fff"}} />
+            )}
+          </div>
+
           {/* Plant filter for staff-admin */}
           {role==="staff-admin"&&(
             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
@@ -3204,7 +3220,7 @@ export default function KFCanteen() {
           )}
 
           {filteredOrders.length===0 ? (
-            <Empty msg="No orders found" sub="Try a different name, order ID, or plant." />
+            <Empty msg="No orders found" sub="Try a different name, order ID, or plant — or check &quot;Show all records&quot; if you're filtering by date." />
           ) : (
             <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -3222,12 +3238,12 @@ export default function KFCanteen() {
                     const pa = a.paymentType ? 1 : 0;
                     const pb = b.paymentType ? 1 : 0;
                     if(pa!==pb) return pa-pb;
-                    // Within each group, oldest-placed first. order.time is a
-                    // display string like "5:46 AM" -- comparing it as text
-                    // breaks across the AM/PM boundary (e.g. "07:35 PM" sorts
-                    // before "11:12 AM" as plain strings), so parse it into an
-                    // actual date+time before comparing.
-                    return parseOrderTimestamp(a) - parseOrderTimestamp(b);
+                    // Within each group, most-recently-placed first. order.time
+                    // is a display string like "5:46 AM" -- comparing it as
+                    // text breaks across the AM/PM boundary (e.g. "07:35 PM"
+                    // sorts before "11:12 AM" as plain strings), so parse it
+                    // into an actual date+time before comparing.
+                    return parseOrderTimestamp(b) - parseOrderTimestamp(a);
                   }).map(order=>(
                     <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer"}}>
                       <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
