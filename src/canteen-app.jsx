@@ -27,6 +27,11 @@ const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
 // helpers
+// 6-digit registration code, shown only to admin in Personnel > Unregistered.
+// An employee must get this from admin and enter it correctly to register --
+// closes the impersonation hole where anyone who knew a coworker's ID number
+// could register an account as them.
+const generateRegCode = () => String(Math.floor(100000 + Math.random()*900000));
 const getDateKey = (date) => DAYS[Math.min(date.getDay()===0?5:date.getDay()-1,5)]; // Mon-Sat day name
 // local "YYYY-MM-DD" — NEVER use date.toISOString().slice(0,10) for this: it converts
 // through UTC, which silently shifts the date back a day in any positive UTC-offset
@@ -445,7 +450,7 @@ export default function KFCanteen() {
   const [showPass, setShowPass] = useState(false);
   const [activeTab, setActiveTab] = useState("menu");
   const [showRegister, setShowRegister] = useState(false);
-  const [registerForm, setRegisterForm] = useState({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"" });
+  const [registerForm, setRegisterForm] = useState({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"" });
   const [registerShowConfirm, setRegisterShowConfirm] = useState(false);
   const [nameSuggestions, setNameSuggestions] = useState([]);
   const [nameSearch, setNameSearch] = useState("");
@@ -947,13 +952,15 @@ export default function KFCanteen() {
 
   const handleRegister = () => {
     if(!registerForm.selectedUserId){ setRegisterError("Please select your name from the list."); return; }
+    const emp = users.find(u=>u.id===registerForm.selectedUserId);
+    if(!emp){ setRegisterError("Employee not found."); return; }
+    if(!registerForm.regCode.trim()){ setRegisterError("Please enter your registration code (ask your admin for it)."); return; }
+    if(registerForm.regCode.trim()!==(emp.regCode||"")){ setRegisterError("Incorrect registration code. Ask your admin for the correct code."); return; }
     if(!registerForm.phone||!/^[0-9+\-\s]{7,15}$/.test(registerForm.phone)){ setRegisterError("Please enter a valid cellphone number."); return; }
     if(!registerForm.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email)){ setRegisterError("Please enter a valid email address."); return; }
     if(!registerForm.plant){ setRegisterError("Please select your assigned plant."); return; }
     if(!registerForm.password){ setRegisterError("Password is required."); return; }
     if(registerForm.password !== registerForm.confirmPassword){ setRegisterError("Passwords do not match."); return; }
-    const emp = users.find(u=>u.id===registerForm.selectedUserId);
-    if(!emp){ setRegisterError("Employee not found."); return; }
     setRegisterError("");
     setShowRegisterConfirm(true);
   };
@@ -966,7 +973,7 @@ export default function KFCanteen() {
     const regPatch = { username, password: registerForm.password, phone: registerForm.phone.trim(), email: registerForm.email.trim(), plant: registerForm.plant, registered: true };
     setUsers(prev=>prev.map(u=>u.id===registerForm.selectedUserId?{...u,...regPatch}:u));
     dbUpdateUser(registerForm.selectedUserId, regPatch);
-    setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"" });
+    setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"" });
     setNameSearch("");
     setRegisterError("");
     setShowRegisterConfirm(false);
@@ -1726,7 +1733,7 @@ export default function KFCanteen() {
                 setShowEmployeeCheck(true);
                 setLoginError("");
                 // Clear any leftover state from a previous registration attempt
-                setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"" });
+                setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"" });
                 setNameSearch("");
                 setNameSuggestions([]);
                 setRegisterError("");
@@ -1857,9 +1864,19 @@ export default function KFCanteen() {
                         <span style={{color:PURPLE,fontWeight:600}}>{emp.plant}</span>
                       </div>
                     </div>
-                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:"",plant:""}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
+                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:"",plant:"",regCode:""}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
                   </div>
                 );})()}
+
+                {/* Registration Code -- get this from your admin, it's not
+                    the same as your ID number */}
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Registration Code</label>
+                  <input value={registerForm.regCode} onChange={e=>setRegisterForm(p=>({...p,regCode:e.target.value}))}
+                    placeholder="Ask your admin for this code" maxLength={6}
+                    style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none",fontFamily:"monospace",letterSpacing:"1px"}} />
+                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Ask your admin for your registration code before continuing.</div>
+                </div>
 
                 {/* Contact Number */}
                 <div style={{marginBottom:12}}>
@@ -4364,6 +4381,7 @@ export default function KFCanteen() {
                         creditBalance:creditLimit,
                         registered:false,
                         isEmployee:true,
+                        regCode:generateRegCode(),
                       };
                     });
                     if(!newUsers.length){ setShowImportModal(false); setImportPreview([]); return; }
@@ -4500,7 +4518,7 @@ export default function KFCanteen() {
                         var name=toProperCase(r.name);
                         var initials=name.split(" ").filter(Boolean).map(w=>w[0]).join("").toUpperCase().slice(0,2);
                         var creditLimit = (r.creditLimit!==""&&!isNaN(parseFloat(r.creditLimit))) ? parseFloat(r.creditLimit) : 1000;
-                        return {id:"u"+Date.now()+Math.random(),username:null,password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),department:r.department.trim(),position:r.position.trim(),company:r.company.trim(),phone:"",creditLimit,creditBalance:creditLimit,registered:false,isEmployee:true};
+                        return {id:"u"+Date.now()+Math.random(),username:null,password:"",role:"user",name,avatar:initials,plant:r.plant,idNumber:r.idNumber.trim(),department:r.department.trim(),position:r.position.trim(),company:r.company.trim(),phone:"",creditLimit,creditBalance:creditLimit,registered:false,isEmployee:true,regCode:generateRegCode()};
                       });
                       setAddEmployeeSubmitting(true);
                       setAddEmployeeError("");
@@ -4781,13 +4799,13 @@ export default function KFCanteen() {
                       style={{width:15,height:15,cursor:"pointer"}} />
                   </th>
                   {personnelTab==="unregistered"
-                    ? ["ID No.","Name","Department","Company","Plant","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
+                    ? ["ID No.","Name","Department","Company","Plant","Reg. Code","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
                     : ["ID No.","Name","Role","Credit Limit","Balance","Actions","Company","Plant","Department","Phone","Username"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
                   }
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length===0&&<tr><td colSpan={personnelTab==="unregistered"?8:12} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
+                {filteredUsers.length===0&&<tr><td colSpan={personnelTab==="unregistered"?9:12} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
                 {personnelTab==="unregistered" ? filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                     <td style={{padding:"12px 14px"}}>
@@ -4833,6 +4851,7 @@ export default function KFCanteen() {
                         </div>
                       )}
                     </td>
+                    <td style={{padding:"12px 14px",color:"#374151",fontFamily:"monospace",fontSize:13,fontWeight:700,letterSpacing:"0.5px",whiteSpace:"nowrap"}}>{u.regCode||"—"}</td>
                     <td style={{padding:"12px 14px"}}><span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>Pending Registration</span></td>
                     <td style={{padding:"12px 14px"}}>
                       <button onClick={()=>{if(!window.confirm(`Remove ${u.name} from the employee list?`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
@@ -5010,7 +5029,7 @@ export default function KFCanteen() {
                       <button disabled={resetSubmitting} onClick={async ()=>{
                         setResetSubmitting(true);
                         setResetError("");
-                        const patch = { username:null, password:"", phone:"", email:"", plant:"", registered:false };
+                        const patch = { username:null, password:"", phone:"", email:"", plant:"", registered:false, regCode:generateRegCode() };
                         const ids = resetTargets.map(t=>t.id);
                         const results = await Promise.all(ids.map(id=>dbUpdateUser(id, patch)));
                         setResetSubmitting(false);

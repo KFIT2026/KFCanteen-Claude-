@@ -20,6 +20,7 @@ export const userToDb = (u) => ({
   credit_balance: u.creditBalance,
   registered: u.registered,
   is_employee: u.isEmployee,
+  reg_code: u.regCode,
 });
 
 export const userFromDb = (r) => ({
@@ -40,6 +41,7 @@ export const userFromDb = (r) => ({
   creditBalance: Number(r.credit_balance),
   registered: r.registered,
   isEmployee: r.is_employee,
+  regCode: r.reg_code,
 });
 
 /* ── users table ── */
