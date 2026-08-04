@@ -450,7 +450,7 @@ export default function KFCanteen() {
   const [showPass, setShowPass] = useState(false);
   const [activeTab, setActiveTab] = useState("menu");
   const [showRegister, setShowRegister] = useState(false);
-  const [registerForm, setRegisterForm] = useState({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"" });
+  const [registerForm, setRegisterForm] = useState({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"", codeVerified:false });
   const [registerShowConfirm, setRegisterShowConfirm] = useState(false);
   const [nameSuggestions, setNameSuggestions] = useState([]);
   const [nameSearch, setNameSearch] = useState("");
@@ -635,7 +635,9 @@ export default function KFCanteen() {
   const [rawMaterialLog, setRawMaterialLog] = useState([]);
   useEffect(() => { fetchRawMaterialLog().then(setRawMaterialLog); }, []);
   const [showAddRawMaterial, setShowAddRawMaterial] = useState(false);
-  const [newRawMaterial, setNewRawMaterial] = useState({ name:"", unit:"kg", buyPrice:"", stock:"" });
+  const emptyRawMaterialRow = () => ({id:Date.now()+Math.random(), name:"", unit:"kg", buyPrice:"", qty:""});
+  const [rawMaterialBatch, setRawMaterialBatch] = useState({ date:toDateKey(new Date()), rows:[emptyRawMaterialRow()] });
+  const [rawMaterialBatchSubmitting, setRawMaterialBatchSubmitting] = useState(false);
   const [rawMaterialSearch, setRawMaterialSearch] = useState("");
   const [rawStockModal, setRawStockModal] = useState(null);
   const [rawStockAddVal, setRawStockAddVal] = useState("");
@@ -645,7 +647,7 @@ export default function KFCanteen() {
   useEffect(() => { fetchDishes().then(setDishes); }, []);
   const [showAddDish, setShowAddDish] = useState(false);
   const [editDishId, setEditDishId] = useState(null);
-  const [newDish, setNewDish] = useState({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g", ingredients:[] });
+  const [newDish, setNewDish] = useState({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g" });
   const [dishDragOver, setDishDragOver] = useState(false);
   const dishPhotoInputRef = useRef(null);
   const handleDishPhotoFile = useCallback((file) => {
@@ -950,12 +952,21 @@ export default function KFCanteen() {
     }
   };
 
-  const handleRegister = () => {
+  const handleRegCodeSubmit = () => {
     if(!registerForm.selectedUserId){ setRegisterError("Please select your name from the list."); return; }
     const emp = users.find(u=>u.id===registerForm.selectedUserId);
     if(!emp){ setRegisterError("Employee not found."); return; }
-    if(!registerForm.regCode.trim()){ setRegisterError("Please enter your registration code (ask your admin for it)."); return; }
-    if(registerForm.regCode.trim()!==(emp.regCode||"")){ setRegisterError("Incorrect registration code. Ask your admin for the correct code."); return; }
+    if(!registerForm.regCode.trim()){ setRegisterError("Please enter your registration code."); return; }
+    if(registerForm.regCode.trim()!==(emp.regCode||"")){ setRegisterError("Incorrect registration code. Contact HR, MIS or General Admin for your assigned code."); return; }
+    setRegisterError("");
+    setRegisterForm(p=>({...p,codeVerified:true}));
+  };
+
+  const handleRegister = () => {
+    if(!registerForm.selectedUserId){ setRegisterError("Please select your name from the list."); return; }
+    if(!registerForm.codeVerified){ setRegisterError("Please verify your registration code first."); return; }
+    const emp = users.find(u=>u.id===registerForm.selectedUserId);
+    if(!emp){ setRegisterError("Employee not found."); return; }
     if(!registerForm.phone||!/^[0-9+\-\s]{7,15}$/.test(registerForm.phone)){ setRegisterError("Please enter a valid cellphone number."); return; }
     if(!registerForm.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email)){ setRegisterError("Please enter a valid email address."); return; }
     if(!registerForm.plant){ setRegisterError("Please select your assigned plant."); return; }
@@ -973,7 +984,7 @@ export default function KFCanteen() {
     const regPatch = { username, password: registerForm.password, phone: registerForm.phone.trim(), email: registerForm.email.trim(), plant: registerForm.plant, registered: true };
     setUsers(prev=>prev.map(u=>u.id===registerForm.selectedUserId?{...u,...regPatch}:u));
     dbUpdateUser(registerForm.selectedUserId, regPatch);
-    setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"" });
+    setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"", codeVerified:false });
     setNameSearch("");
     setRegisterError("");
     setShowRegisterConfirm(false);
@@ -1056,32 +1067,8 @@ export default function KFCanteen() {
       dbUpdateProduct(p.id, { stock:newStock, available: newStock>0 });
       return { ...p, stock: newStock, available: newStock > 0 };
     }));
-    items.forEach(item => {
-      if(!item.dishId) return;
-      const dish = dishes.find(d=>d.id===item.dishId);
-      if(!dish||!dish.ingredients) return;
-      dish.ingredients.forEach(ing => {
-        setRawMaterials(prev => prev.map(m => {
-          if(m.id!==ing.rawMaterialId) return m;
-          const usedQty = ing.quantity * item.qty;
-          const excessBefore = m.excessStock||0;
-          const fromExcess = Math.min(excessBefore, usedQty);
-          const fromStock = usedQty - fromExcess;
-          const newExcess = excessBefore - fromExcess;
-          const newStock = Math.max(0, m.stock - fromStock);
-          const logEntry = {
-            id:"rml"+Date.now()+m.id, rawMaterial:m.name, unit:m.unit,
-            type:"OUT", qty:usedQty, before:m.stock, after:newStock,
-            by:currentUser.name,
-            time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
-          };
-          setRawMaterialLog(log=>[logEntry,...log]);
-          dbInsertRawMaterialLog(logEntry);
-          dbUpdateRawMaterial(m.id, { stock:newStock, excessStock:newExcess });
-          return { ...m, stock:newStock, excessStock:newExcess };
-        }));
-      });
-    });
+    // Raw materials are manually encoded by staff-admin (Raw Materials tab) --
+    // dishes no longer carry a recipe, so ordering doesn't auto-deduct them.
   };
 
   const placeOrder = () => {
@@ -1368,15 +1355,45 @@ export default function KFCanteen() {
   };
 
   /* ── RAW MATERIALS ── */
-  const addRawMaterial = () => {
-    if(!newRawMaterial.name||!newRawMaterial.unit) return;
-    const m = { id:"rm"+Date.now(), name:newRawMaterial.name, unit:newRawMaterial.unit, buyPrice:Math.max(0,parseFloat(newRawMaterial.buyPrice)||0), stock:Math.max(0,parseFloat(newRawMaterial.stock)||0) };
-    setRawMaterials(prev=>[...prev, m]);
-    dbInsertRawMaterial(m);
-    setNewRawMaterial({ name:"", unit:"kg", buyPrice:"", stock:"" });
+  // Encodes many raw materials/stock-ins at once, all under one shared date.
+  // Matches by name (case-insensitive) against existing materials -- a match
+  // adds the entered qty to that material's current stock, otherwise a new
+  // material is created with the entered qty as its starting stock. Works
+  // off a local running copy of `rawMaterials` (not the outer closure) so
+  // two rows for the same new/existing material in one batch stack their
+  // quantities correctly instead of one overwriting the other.
+  const submitRawMaterialBatch = () => {
+    const validRows = rawMaterialBatch.rows.filter(r=>r.name.trim()&&r.qty&&parseFloat(r.qty)>0);
+    if(!validRows.length) return;
+    setRawMaterialBatchSubmitting(true);
+    const dateLabel = formatDateFull(new Date(rawMaterialBatch.date+"T00:00:00"));
+    let working = rawMaterials.map(m=>({...m}));
+    const newLogs = [];
+    validRows.forEach(row=>{
+      const qty = parseFloat(row.qty)||0;
+      const buyPrice = row.buyPrice.trim()?Math.max(0,parseFloat(row.buyPrice)||0):null;
+      const idx = working.findIndex(m=>m.name.trim().toLowerCase()===row.name.trim().toLowerCase());
+      if(idx>=0){
+        const before = working[idx].stock;
+        const after = before + qty;
+        working[idx] = {...working[idx], stock:after, ...(buyPrice!=null?{buyPrice}:{})};
+        dbUpdateRawMaterial(working[idx].id, buyPrice!=null?{stock:after,buyPrice}:{stock:after});
+        newLogs.push({ id:"rml"+Date.now()+Math.random(), rawMaterial:working[idx].name, unit:working[idx].unit, type:"IN", qty, before, after, by:currentUser.name, time:dateLabel });
+      } else {
+        const m = { id:"rm"+Date.now()+Math.random(), name:toProperCase(row.name.trim()), unit:row.unit, buyPrice:buyPrice||0, stock:qty };
+        working.push(m);
+        dbInsertRawMaterial(m);
+        newLogs.push({ id:"rml"+Date.now()+Math.random(), rawMaterial:m.name, unit:m.unit, type:"IN", qty, before:0, after:qty, by:currentUser.name, time:dateLabel });
+      }
+    });
+    setRawMaterials(working);
+    setRawMaterialLog(prev=>[...newLogs.slice().reverse(),...prev]);
+    newLogs.forEach(dbInsertRawMaterialLog);
+    setRawMaterialBatchSubmitting(false);
     setShowAddRawMaterial(false);
+    setRawMaterialBatch({ date:toDateKey(new Date()), rows:[emptyRawMaterialRow()] });
   };
-  const removeRawMaterial = (id) => { if(!window.confirm("Remove this raw material? Dishes using it will keep their recorded ingredient but it will no longer be trackable.")) return; setRawMaterials(prev=>prev.filter(m=>m.id!==id)); dbDeleteRawMaterial(id); };
+  const removeRawMaterial = (id) => { if(!window.confirm("Remove this raw material? This cannot be undone.")) return; setRawMaterials(prev=>prev.filter(m=>m.id!==id)); dbDeleteRawMaterial(id); };
   const addRawStock = (id, qty) => {
     const material = rawMaterials.find(m=>m.id===id);
     if(!material||!qty||qty<=0) return;
@@ -1394,12 +1411,11 @@ export default function KFCanteen() {
   const saveDish = () => {
     if(!newDish.name||!newDish.price||parseFloat(newDish.price)<=0) return;
     const dishData = { name:newDish.name, cat:newDish.cat, price:parseFloat(newDish.price), img:newDish.photo||newDish.img||"🍽️", isPhoto:!!newDish.photo, grams:newDish.grams?Math.max(0,parseFloat(newDish.grams)):null, servingUnit:newDish.servingUnit||"g" };
-    const ingredients = newDish.ingredients.filter(i=>i.rawMaterialId&&i.quantity);
     if(editDishId){
-      setDishes(prev=>prev.map(d=>d.id===editDishId?{...d,...dishData,ingredients}:d));
-      dbUpdateDish(editDishId, dishData, ingredients);
+      setDishes(prev=>prev.map(d=>d.id===editDishId?{...d,...dishData}:d));
+      dbUpdateDish(editDishId, dishData);
     } else {
-      const dish = { id:"dish"+Date.now(), ...dishData, ingredients };
+      const dish = { id:"dish"+Date.now(), ...dishData };
       setDishes(prev=>[...prev, dish]);
       dbInsertDish(dish);
       if(dishOriginContext){
@@ -1409,14 +1425,14 @@ export default function KFCanteen() {
         setDishOriginContext(null);
       }
     }
-    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g", ingredients:[] });
+    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g" });
     setEditDishId(null);
     setShowAddDish(false);
   };
   const closeAddDish = () => {
     setShowAddDish(false);
     setEditDishId(null);
-    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g", ingredients:[] });
+    setNewDish({ name:"", cat:"LUNCH", price:"", img:"🍽️", photo:null, grams:"", servingUnit:"g" });
     if(dishOriginContext){
       setShowAddItem(dishOriginContext);
       setDishOriginContext(null);
@@ -1460,14 +1476,12 @@ export default function KFCanteen() {
     });
   };
 
-  // repurposeTarget is null for waste, or one of:
-  //   { type:"raw_materials" } — breaks the excess down into its recipe's
-  //     ingredients proportionally and adds them to each material's
-  //     excess_stock (same mechanism as before)
-  //   { type:"dish", dishId, dishName } — logged only, no inventory
-  //     recalculation: there's no "prepared stock" concept for dishes to
-  //     add to, so this just records that the excess was turned into
-  //     another dish for accountability/waste-reduction tracking
+  // repurposeTarget is null for waste, or { type:"dish", dishId, dishName } --
+  // logged only, no inventory recalculation: there's no "prepared stock"
+  // concept for dishes to add to, so this just records that the excess was
+  // turned into another dish for accountability/waste-reduction tracking.
+  // (Raw materials are manually encoded now, so there's no recipe to break
+  // an excess dish down into anymore.)
   const decideExcess = (plant, date, item, excessQty, decision, repurposeTarget) => {
     const decisionEntry = {
       id:"exd"+Date.now()+item.id+Math.random().toString(36).slice(2), plant, date, menuItemId:item.id, dishName:item.name,
@@ -1478,28 +1492,6 @@ export default function KFCanteen() {
     };
     setExcessDecisions(prev=>[decisionEntry, ...prev]);
     dbInsertExcessDecision(decisionEntry);
-
-    if(decision==="repurpose" && repurposeTarget.type==="raw_materials" && item.dishId){
-      const dish = dishes.find(d=>d.id===item.dishId);
-      if(dish&&dish.ingredients&&dish.ingredients.length&&dish.grams){
-        dish.ingredients.forEach(ing=>{
-          const addAmount = excessQty * (ing.quantity / dish.grams);
-          if(addAmount<=0) return;
-          setRawMaterials(prev=>prev.map(m=>{
-            if(m.id!==ing.rawMaterialId) return m;
-            const before = m.excessStock||0;
-            const after = before + addAmount;
-            dbUpdateRawMaterial(m.id, { excessStock: after });
-            const logEntry = { id:"rml"+Date.now()+m.id, rawMaterial:m.name, unit:m.unit, type:"IN", qty:addAmount, before, after,
-              by:currentUser.name, source:"excess", note:`Excess from ${item.name} · ${formatDateLabel(new Date(date+"T00:00:00"))} · ${plant}`,
-              time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
-            setRawMaterialLog(log=>[logEntry,...log]);
-            dbInsertRawMaterialLog(logEntry);
-            return { ...m, excessStock: after };
-          }));
-        });
-      }
-    }
   };
 
   const closeCanteen = (plant) => {
@@ -1733,7 +1725,7 @@ export default function KFCanteen() {
                 setShowEmployeeCheck(true);
                 setLoginError("");
                 // Clear any leftover state from a previous registration attempt
-                setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"" });
+                setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"", codeVerified:false });
                 setNameSearch("");
                 setNameSuggestions([]);
                 setRegisterError("");
@@ -1802,7 +1794,8 @@ export default function KFCanteen() {
             {/* Step indicator */}
             <div style={{display:"flex",gap:8,marginBottom:18,alignItems:"center"}}>
               <div style={{flex:1,height:4,borderRadius:4,background:registerForm.selectedUserId?PURPLE:PURPLE_LIGHT}} />
-              <div style={{flex:1,height:4,borderRadius:4,background:registerForm.selectedUserId&&registerForm.phone?PURPLE:PURPLE_LIGHT}} />
+              <div style={{flex:1,height:4,borderRadius:4,background:registerForm.codeVerified?PURPLE:PURPLE_LIGHT}} />
+              <div style={{flex:1,height:4,borderRadius:4,background:registerForm.codeVerified&&registerForm.phone?PURPLE:PURPLE_LIGHT}} />
               <div style={{flex:1,height:4,borderRadius:4,background:registerForm.password&&registerForm.confirmPassword&&registerForm.password===registerForm.confirmPassword?PURPLE:PURPLE_LIGHT}} />
             </div>
 
@@ -1850,6 +1843,37 @@ export default function KFCanteen() {
                   </div>
                 )}
               </div>
+            ) : !registerForm.codeVerified ? (
+              <>
+                {/* Selected employee card */}
+                {(()=>{const emp=users.find(u=>u.id===registerForm.selectedUserId); return emp&&(
+                  <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"12px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:40,height:40,borderRadius:"50%",background:PURPLE,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>{emp.avatar}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14,color:"#111"}}>{emp.name}</div>
+                      <div style={{fontSize:12,display:"flex",alignItems:"center",gap:6}}>
+                        {emp.idNumber&&<span style={{fontFamily:"monospace",fontWeight:600,color:"#374151",fontSize:11}}>{emp.idNumber}</span>}
+                        {emp.idNumber&&<span style={{color:"rgba(107,33,168,0.4)"}}>·</span>}
+                        <span style={{color:PURPLE,fontWeight:600}}>{emp.plant}</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:"",plant:"",regCode:"",codeVerified:false}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
+                  </div>
+                );})()}
+
+                {/* Registration Code -- get this from HR/MIS/General Admin,
+                    it's not the same as your ID number */}
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Registration Code</label>
+                  <input value={registerForm.regCode} onChange={e=>setRegisterForm(p=>({...p,regCode:e.target.value}))}
+                    placeholder="Enter your registration code" maxLength={6}
+                    style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none",fontFamily:"monospace",letterSpacing:"1px"}} />
+                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Contact HR, MIS or General Admin for your assigned code.</div>
+                </div>
+
+                {registerError&&<p style={{color:"#EF4444",fontSize:12,margin:"4px 0 8px",display:"flex",alignItems:"center",gap:5}}>⚠️ {registerError}</p>}
+                <button onClick={handleRegCodeSubmit} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:6}}>Proceed</button>
+              </>
             ) : (
               <>
                 {/* Selected employee card */}
@@ -1864,19 +1888,9 @@ export default function KFCanteen() {
                         <span style={{color:PURPLE,fontWeight:600}}>{emp.plant}</span>
                       </div>
                     </div>
-                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:"",plant:"",regCode:""}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
+                    <button onClick={()=>{setRegisterForm(p=>({...p,selectedUserId:"",plant:"",regCode:"",codeVerified:false}));setNameSearch("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"4px 8px",borderRadius:6,border:"1px solid #E5E7EB",background:"#fff"}}>Change</button>
                   </div>
                 );})()}
-
-                {/* Registration Code -- get this from your admin, it's not
-                    the same as your ID number */}
-                <div style={{marginBottom:12}}>
-                  <label style={{fontSize:13,fontWeight:500,color:"#374151",display:"block",marginBottom:6}}>Registration Code</label>
-                  <input value={registerForm.regCode} onChange={e=>setRegisterForm(p=>({...p,regCode:e.target.value}))}
-                    placeholder="Ask your admin for this code" maxLength={6}
-                    style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #E5E7EB",fontSize:14,color:"#111",background:"#fff",boxSizing:"border-box",outline:"none",fontFamily:"monospace",letterSpacing:"1px"}} />
-                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Ask your admin for your registration code before continuing.</div>
-                </div>
 
                 {/* Contact Number */}
                 <div style={{marginBottom:12}}>
@@ -1942,8 +1956,8 @@ export default function KFCanteen() {
               </>
             )}
 
-            {registerError&&<p style={{color:"#EF4444",fontSize:12,margin:"4px 0 8px",display:"flex",alignItems:"center",gap:5}}>⚠️ {registerError}</p>}
-            {registerForm.selectedUserId&&(
+            {registerForm.codeVerified&&registerError&&<p style={{color:"#EF4444",fontSize:12,margin:"4px 0 8px",display:"flex",alignItems:"center",gap:5}}>⚠️ {registerError}</p>}
+            {registerForm.selectedUserId&&registerForm.codeVerified&&(
               <button onClick={handleRegister} style={{width:"100%",background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:6}}>Complete Registration</button>
             )}
             <p style={{textAlign:"center",marginTop:14,fontSize:13,color:"#9CA3AF"}}>
@@ -2693,7 +2707,7 @@ export default function KFCanteen() {
                       </div>
                       <div style={{flex:1}}>
                         <div style={{fontWeight:700,fontSize:13,color:"#111"}}>{linked.name}</div>
-                        <div style={{fontSize:11,color:PURPLE}}>{linked.cat} · ₱{linked.price} · {linked.ingredients.length} ingredient{linked.ingredients.length!==1?"s":""}</div>
+                        <div style={{fontSize:11,color:PURPLE}}>{linked.cat} · dish catalog price ₱{linked.price}</div>
                       </div>
                       <button onClick={()=>setNewItem(p=>({...p,dishId:null,name:"",price:"",img:"🍽️",photo:null,cat:"LUNCH",grams:""}))}
                         style={{background:"#fff",border:"1px solid #E5E7EB",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#6B7280"}}>Unlink</button>
@@ -2705,7 +2719,7 @@ export default function KFCanteen() {
                         <input value={dishLinkSearch} onChange={e=>setDishLinkSearch(e.target.value)} placeholder="Search dish catalog..."
                           style={{border:"none",outline:"none",fontSize:13,color:"#111",width:"100%",background:"none"}} />
                       </div>
-                      <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Every menu item must come from the dish catalog, so its raw materials are tracked automatically.</div>
+                      <div style={{fontSize:11,color:"#9CA3AF",marginTop:6}}>Every menu item must come from the dish catalog for its name and photo.</div>
                       {dishLinkSearch.trim().length>=1&&(
                         <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",zIndex:250,overflow:"hidden",marginTop:2,maxHeight:220,overflowY:"auto"}}>
                           {dishes.filter(d=>d.name.toLowerCase().includes(dishLinkSearch.toLowerCase())).map(d=>(
@@ -2737,6 +2751,14 @@ export default function KFCanteen() {
                     </>
                   )}
                 </div>
+                {newItem.dishId&&(
+                  <div style={{marginBottom:18}}>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Price for this Menu Slot (₱)</label>
+                    <input value={newItem.price} onChange={e=>setNewItem(p=>({...p,price:e.target.value}))} placeholder="0.00" type="number" min="0" step="0.01"
+                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Starts at the dish catalog price — change it to price this slot differently.</div>
+                  </div>
+                )}
                 <div style={{display:"flex",gap:10,marginTop:4}}>
                   <button onClick={()=>{setShowAddItem(null);setNewItem({name:"",price:"",img:"🍽️",cat:"LUNCH",photo:null,grams:"",days:[],weeks:[],dishId:null});setDishLinkSearch("");}}
                     style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
@@ -2914,11 +2936,6 @@ export default function KFCanteen() {
                                 style={{flex:1,background:"#FEE2E2",color:"#991B1B",border:"none",borderRadius:7,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
                                 🗑️ Waste All ({undecidedTyped})
                               </button>
-                              <button onClick={()=>withInput.forEach(({item})=>{ if(item.dishId) decideExcess(p,TODAY_KEY,item,parseFloat(excessInputs[item.id]),"repurpose",{type:"raw_materials"}); })}
-                                title="Only applies to dishes with a linked recipe — others are skipped"
-                                style={{flex:1,background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:7,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
-                                🔁 Repurpose All to Raw Materials
-                              </button>
                             </div>
                           )}
                           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
@@ -2952,12 +2969,7 @@ export default function KFCanteen() {
                                   repurposeChoiceFor===item.id ? (
                                     <div style={{marginTop:8,background:"#fff",border:"1px solid #E5E7EB",borderRadius:8,padding:8}}>
                                       <div style={{fontSize:11,fontWeight:600,color:"#374151",marginBottom:6}}>Repurpose {formatQtyLong(typedQty,unit)} of {item.name} to:</div>
-                                      <div style={{display:"flex",gap:6,marginBottom:repurposeTargetDish!==null||!item.dishId?0:6}}>
-                                        <button onClick={()=>decideExcess(p,TODAY_KEY,item,typedQty,"repurpose",{type:"raw_materials"})} disabled={!item.dishId}
-                                          title={item.dishId?"":"No recipe linked — can't compute ingredient breakdown"}
-                                          style={{flex:1,background:item.dishId?PURPLE_LIGHT:"#F3F4F6",color:item.dishId?PURPLE:"#9CA3AF",border:"none",borderRadius:6,padding:"6px",cursor:item.dishId?"pointer":"not-allowed",fontSize:11,fontWeight:700}}>
-                                          ⚗️ Raw Materials
-                                        </button>
+                                      <div style={{display:"flex",gap:6,marginBottom:repurposeTargetDish!==null?0:6}}>
                                         <button onClick={()=>{setRepurposeTargetDish(repurposeTargetDish?null:{});setRepurposeDishSearch("");}}
                                           style={{flex:1,background:repurposeTargetDish?PURPLE:"#F3F4F6",color:repurposeTargetDish?"#fff":"#374151",border:"none",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:11,fontWeight:700}}>
                                           🍽️ Another Dish
@@ -3573,8 +3585,8 @@ export default function KFCanteen() {
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
               <Icon name="scale" size={20} color={PURPLE} /> Raw Materials
             </h2>
-            <button onClick={()=>setShowAddRawMaterial(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-              <Icon name="plus" size={14} color="#fff" /> Add Raw Material
+            <button onClick={()=>{setRawMaterialBatch({date:toDateKey(new Date()),rows:[emptyRawMaterialRow()]});setShowAddRawMaterial(true);}} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              <Icon name="plus" size={14} color="#fff" /> Encode Stock
             </button>
           </div>
 
@@ -3671,46 +3683,84 @@ export default function KFCanteen() {
           </>
           )}
 
-          {/* Add Raw Material modal */}
+          {/* Encode Stock modal -- bulk entry, one shared date for the whole batch */}
           {showAddRawMaterial&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
-                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Raw Material</div>
-                  <button onClick={()=>{setShowAddRawMaterial(false);setNewRawMaterial({name:"",unit:"kg",buyPrice:"",stock:""});}}
-                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:520,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
+                <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Encode Stock</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Fill in each row — click "+ Add Another" to add more</div>
+                  </div>
+                  <button onClick={()=>{setShowAddRawMaterial(false);setRawMaterialBatch({date:toDateKey(new Date()),rows:[emptyRawMaterialRow()]});}}
+                    style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,flexShrink:0}}>×</button>
                 </div>
-                <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Name</label>
-                    <input value={newRawMaterial.name} onChange={e=>setNewRawMaterial(p=>({...p,name:e.target.value}))} placeholder="e.g. Rice"
+
+                <div style={{overflowY:"auto",flex:1,padding:"16px 22px"}}>
+                  <div style={{marginBottom:16}}>
+                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Date</label>
+                    <input value={rawMaterialBatch.date} onChange={e=>setRawMaterialBatch(p=>({...p,date:e.target.value}))} type="date"
                       style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Applies to every row below.</div>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                    <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Unit</label>
-                      <select value={newRawMaterial.unit} onChange={e=>setNewRawMaterial(p=>({...p,unit:e.target.value}))}
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                        {["kg","g","L","ml","pcs"].map(u=><option key={u} value={u}>{u}</option>)}
-                      </select>
+
+                  {rawMaterialBatch.rows.map((row,idx)=>{
+                    const setField = (field,v)=>setRawMaterialBatch(p=>({...p,rows:p.rows.map(r=>r.id===row.id?{...r,[field]:v}:r)}));
+                    const fieldStyle = {padding:"9px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",width:"100%",boxSizing:"border-box"};
+                    const labelStyle = {fontSize:11,fontWeight:600,color:"#6B7280",display:"block",marginBottom:4};
+                    const existing = row.name.trim() ? rawMaterials.find(m=>m.name.trim().toLowerCase()===row.name.trim().toLowerCase()) : null;
+                    return (
+                    <div key={row.id} style={{border:"1px solid #E5E7EB",borderRadius:10,padding:"14px",marginBottom:12,position:"relative",background:"#F9FAFB"}}>
+                      {rawMaterialBatch.rows.length>1&&(
+                        <button onClick={()=>setRawMaterialBatch(p=>({...p,rows:p.rows.filter(r=>r.id!==row.id)}))}
+                          style={{position:"absolute",top:10,right:10,width:26,height:26,borderRadius:7,border:"none",background:"#FEE2E2",color:"#EF4444",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          ×
+                        </button>
+                      )}
+                      <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",marginBottom:10,letterSpacing:"0.4px"}}>ITEM {idx+1}</div>
+                      <div style={{marginBottom:10}}>
+                        <label style={labelStyle}>Name</label>
+                        <input value={row.name} onChange={e=>setField("name",e.target.value)} placeholder="e.g. Rice" style={fieldStyle} />
+                        {existing&&<div style={{fontSize:11,color:PURPLE,marginTop:4,fontWeight:600}}>Matches existing material — adds to its current stock of {existing.stock} {existing.unit}.</div>}
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                        <div>
+                          <label style={labelStyle}>Unit</label>
+                          <select value={row.unit} onChange={e=>setField("unit",e.target.value)} disabled={!!existing} style={{...fieldStyle,background:existing?"#F3F4F6":"#fff",cursor:existing?"not-allowed":"pointer"}}>
+                            {["kg","L","ml","bundle","plastic","bag"].map(u=><option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Cost/Unit (₱)</label>
+                          <input value={row.buyPrice} onChange={e=>setField("buyPrice",e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" style={fieldStyle} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Quantity</label>
+                          <input value={row.qty} onChange={e=>setField("qty",e.target.value)} type="number" min="0" step="0.01" placeholder="0" style={fieldStyle} />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Cost per Unit (₱)</label>
-                      <input value={newRawMaterial.buyPrice} onChange={e=>setNewRawMaterial(p=>({...p,buyPrice:e.target.value}))} placeholder="0.00" type="number" min="0" step="0.01"
-                        style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
+                    );
+                  })}
+
+                  <button onClick={()=>setRawMaterialBatch(p=>({...p,rows:[...p.rows,emptyRawMaterialRow()]}))}
+                    style={{width:"100%",padding:"10px",border:"1.5px dashed #D1D5DB",borderRadius:9,background:"#F9FAFB",color:"#6B7280",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:4}}>
+                    <Icon name="plus" size={14} color="#6B7280" /> Add Another
+                  </button>
+                </div>
+
+                <div style={{padding:"16px 22px",borderTop:"1px solid #E5E7EB",flexShrink:0}}>
+                  {rawMaterialBatch.rows.filter(r=>r.name.trim()&&r.qty).length>0&&(
+                    <div style={{background:PURPLE_LIGHT,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:PURPLE}}>
+                      ✅ <strong>{rawMaterialBatch.rows.filter(r=>r.name.trim()&&r.qty).length}</strong> item{rawMaterialBatch.rows.filter(r=>r.name.trim()&&r.qty).length>1?"s":""} ready to encode
                     </div>
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Initial Stock</label>
-                    <input value={newRawMaterial.stock} onChange={e=>setNewRawMaterial(p=>({...p,stock:e.target.value}))} placeholder="0" type="number" min="0" step="0.01"
-                      style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
-                  </div>
-                  <div style={{display:"flex",gap:10,marginTop:4}}>
-                    <button onClick={()=>{setShowAddRawMaterial(false);setNewRawMaterial({name:"",unit:"kg",buyPrice:"",stock:""});}}
+                  )}
+                  <div style={{display:"flex",gap:10}}>
+                    <button onClick={()=>{setShowAddRawMaterial(false);setRawMaterialBatch({date:toDateKey(new Date()),rows:[emptyRawMaterialRow()]});}}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                    <button onClick={addRawMaterial} disabled={!newRawMaterial.name}
-                      style={{flex:2,background:newRawMaterial.name?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newRawMaterial.name?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                      <Icon name="plus" size={15} color="#fff" /> Add Material
+                    <button disabled={!rawMaterialBatch.rows.some(r=>r.name.trim()&&r.qty)||rawMaterialBatchSubmitting} onClick={submitRawMaterialBatch}
+                      style={{flex:2,background:(rawMaterialBatch.rows.some(r=>r.name.trim()&&r.qty)&&!rawMaterialBatchSubmitting)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(rawMaterialBatch.rows.some(r=>r.name.trim()&&r.qty)&&!rawMaterialBatchSubmitting)?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <Icon name="plus" size={15} color="#fff" /> {rawMaterialBatchSubmitting?"Encoding...":"Encode Stock"}
                     </button>
                   </div>
                 </div>
@@ -3724,12 +3774,8 @@ export default function KFCanteen() {
     /* ── DISHES (recipes, admin/staff-admin) ── */
     if(activeTab==="dishes") {
       const displayedDishes = dishes.filter(d=>d.name.toLowerCase().includes(dishSearch.toLowerCase()));
-      const costOf = (dish) => (dish.ingredients||[]).reduce((s,ing)=>{
-        const m = rawMaterials.find(rm=>rm.id===ing.rawMaterialId);
-        return s + (m ? m.buyPrice*ing.quantity : 0);
-      },0);
-      const openAddDish = () => { setEditDishId(null); setNewDish({name:"",cat:"LUNCH",price:"",img:"🍽️",photo:null,grams:"",servingUnit:"g",ingredients:[]}); setShowAddDish(true); };
-      const openEditDish = (d) => { setEditDishId(d.id); setNewDish({name:d.name,cat:d.cat||"LUNCH",price:String(d.price),img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):"",servingUnit:d.servingUnit||"g",ingredients:d.ingredients.map(i=>({...i}))}); setShowAddDish(true); };
+      const openAddDish = () => { setEditDishId(null); setNewDish({name:"",cat:"LUNCH",price:"",img:"🍽️",photo:null,grams:"",servingUnit:"g"}); setShowAddDish(true); };
+      const openEditDish = (d) => { setEditDishId(d.id); setNewDish({name:d.name,cat:d.cat||"LUNCH",price:String(d.price),img:d.img,photo:d.isPhoto?d.img:null,grams:d.grams?String(d.grams):"",servingUnit:d.servingUnit||"g"}); setShowAddDish(true); };
       return (
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
@@ -3741,7 +3787,7 @@ export default function KFCanteen() {
             </button>
           </div>
           <div style={{fontSize:12,color:"#6B7280",background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
-            💡 Dishes are reusable recipes. Every weekly menu item is linked to a dish (via <strong>Manage Menu → Add Item</strong>) so raw materials get deducted automatically when customers order it.
+            💡 Dishes are reusable catalog entries. Every weekly menu item is linked to a dish (via <strong>Manage Menu → Add Item</strong>) for its name, photo, and default price.
           </div>
 
           <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220,maxWidth:320,marginBottom:16}}>
@@ -3753,8 +3799,6 @@ export default function KFCanteen() {
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:12}}>
             {displayedDishes.map(d=>{
-              const cost = costOf(d);
-              const profit = d.price - cost;
               return (
                 <div key={d.id} style={{background:"#fff",borderRadius:12,border:"1px solid #E5E7EB",padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -3766,20 +3810,6 @@ export default function KFCanteen() {
                       <div style={{fontSize:11,color:"#6B7280"}}>{d.cat} · ₱{d.price}{d.grams?` · ${unitIcon(d.servingUnit)} ${formatServing(d.grams,d.servingUnit)}/serving`:""}</div>
                     </div>
                   </div>
-                  <div style={{fontSize:12,color:"#6B7280"}}>
-                    {d.ingredients&&d.ingredients.length>0 ? (
-                      <>{d.ingredients.length} ingredient{d.ingredients.length!==1?"s":""}: {d.ingredients.map(ing=>{
-                        const m = rawMaterials.find(rm=>rm.id===ing.rawMaterialId);
-                        return m ? `${m.name} (${ing.quantity}${m.unit})` : null;
-                      }).filter(Boolean).join(", ")}</>
-                    ) : <span style={{color:"#F59E0B"}}>No recipe set — won't deduct raw materials</span>}
-                  </div>
-                  {d.ingredients&&d.ingredients.length>0&&(
-                    <div style={{display:"flex",gap:10,fontSize:11,background:"#F9FAFB",borderRadius:8,padding:"6px 10px"}}>
-                      <span style={{color:"#EF4444"}}>Cost: ₱{cost.toFixed(2)}</span>
-                      <span style={{color:profit>=0?"#059669":"#EF4444"}}>Profit: ₱{profit.toFixed(2)}</span>
-                    </div>
-                  )}
                   <div style={{display:"flex",gap:8,marginTop:4}}>
                     <button onClick={()=>openEditDish(d)} style={{flex:1,background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
                       <Icon name="edit" size={12} color={PURPLE} /> Edit
@@ -5943,54 +5973,6 @@ export default function KFCanteen() {
                   </div>
                   <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Used to compute leftovers at Close Canteen — how much of one serving is prepared vs. sold.</div>
                 </div>
-              </div>
-
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <label style={{fontSize:13,fontWeight:600,color:"#374151"}}>Recipe (Raw Materials)</label>
-                  <button type="button" onClick={()=>setNewDish(p=>({...p,ingredients:[...p.ingredients,{id:"ing"+Date.now()+Math.random(),rawMaterialId:"",quantity:""}]}))}
-                    style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>
-                    + Add Ingredient
-                  </button>
-                </div>
-                {newDish.ingredients.length===0&&<div style={{fontSize:12,color:"#9CA3AF",fontStyle:"italic"}}>No ingredients yet — this dish won't deduct raw materials on order.</div>}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {newDish.ingredients.map((ing,idx)=>{
-                    const mat = rawMaterials.find(m=>m.id===ing.rawMaterialId);
-                    return (
-                      <div key={ing.id} style={{display:"flex",gap:8,alignItems:"center"}}>
-                        <select value={ing.rawMaterialId} onChange={e=>{
-                          const v=e.target.value;
-                          setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,rawMaterialId:v}:i)}));
-                        }} style={{flex:2,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                          <option value="">Select raw material...</option>
-                          {rawMaterials.map(m=><option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
-                        </select>
-                        <input value={ing.quantity} onChange={e=>{
-                          const v=e.target.value;
-                          setNewDish(p=>({...p,ingredients:p.ingredients.map((i,ii)=>ii===idx?{...i,quantity:v}:i)}));
-                        }} type="number" min="0" step="0.01" placeholder="Qty"
-                          style={{flex:1,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}} />
-                        <span style={{fontSize:12,color:"#9CA3AF",minWidth:24}}>{mat?mat.unit:""}</span>
-                        <button onClick={()=>setNewDish(p=>({...p,ingredients:p.ingredients.filter((_,ii)=>ii!==idx)}))}
-                          style={{background:"#FEE2E2",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",color:"#991B1B",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                      </div>
-                    );
-                  })}
-                </div>
-                {newDish.ingredients.some(i=>i.rawMaterialId&&i.quantity)&&(()=>{
-                  const cost = newDish.ingredients.reduce((s,i)=>{
-                    const m = rawMaterials.find(rm=>rm.id===i.rawMaterialId);
-                    return s + (m&&i.quantity?m.buyPrice*parseFloat(i.quantity):0);
-                  },0);
-                  const profit = (parseFloat(newDish.price)||0) - cost;
-                  return (
-                    <div style={{marginTop:10,background:PURPLE_LIGHT,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",fontSize:12}}>
-                      <span style={{color:"#EF4444"}}>Cost per serving: ₱{cost.toFixed(2)}</span>
-                      <span style={{color:profit>=0?"#059669":"#EF4444",fontWeight:700}}>Profit: ₱{profit.toFixed(2)}</span>
-                    </div>
-                  );
-                })()}
               </div>
 
               <div style={{display:"flex",gap:10,marginTop:4}}>
