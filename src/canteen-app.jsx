@@ -2847,7 +2847,8 @@ export default function KFCanteen() {
           : true;
         const searchMatch = o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
           o.user.toLowerCase().includes(orderSearch.toLowerCase()) ||
-          (o.plant||"").toLowerCase().includes(orderSearch.toLowerCase());
+          (o.plant||"").toLowerCase().includes(orderSearch.toLowerCase()) ||
+          (o.userId && (users.find(u=>u.id===o.userId)||{}).idNumber||"").toLowerCase().includes(orderSearch.toLowerCase());
         const dateMatch = orderShowAllDates || o.date===orderDateFilter;
         return plantMatch && searchMatch && dateMatch;
       });
@@ -3140,7 +3141,7 @@ export default function KFCanteen() {
               {/* search bar */}
               <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 14px",background:"#fff",minWidth:220}}>
                 <Icon name="search" size={15} color="#9CA3AF" />
-                <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name, order ID, or plant..."
+                <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="Search by name, order ID, plant, or ID number..."
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
               </div>
               {(isAdminLike||role==="staff-admin"||role==="staff")&&(
