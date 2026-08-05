@@ -259,6 +259,7 @@ const NAV = {
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
     { id:"expenses",  label:"Expenses",        icon:"expense" },
+    { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
     { id:"suggestions",label:"Suggestions",    icon:"idea" },
   ],
@@ -4732,12 +4733,16 @@ export default function KFCanteen() {
                   style={{border:"none",background:"none",outline:"none",fontSize:13,color:"#111",width:"100%"}} />
                 {personnelSearch&&<button onClick={()=>setPersonnelSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
               </div>
-              <button onClick={()=>setShowAddEmployeeModal(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-                <Icon name="plus" size={14} color="#fff" /> Add Employee
-              </button>
-              <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-                📥 Import Excel
-              </button>
+              {isAdminLike&&(
+                <>
+                  <button onClick={()=>setShowAddEmployeeModal(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+                    <Icon name="plus" size={14} color="#fff" /> Add Employee
+                  </button>
+                  <button onClick={()=>{setShowImportModal(true);setImportPreview([]);setImportError("");}} style={{background:"#059669",color:"#fff",border:"none",borderRadius:9,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+                    📥 Import Excel
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -4884,34 +4889,38 @@ export default function KFCanteen() {
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
-                  <th style={{padding:"11px 14px",width:36}}>
-                    <input type="checkbox"
-                      checked={filteredUsers.length>0&&filteredUsers.every(u=>(personnelTab==="unregistered"?selectedUnregisteredIds:selectedRegisteredIds).includes(u.id))}
-                      onChange={e=>{
-                        const setSel = personnelTab==="unregistered" ? setSelectedUnregisteredIds : setSelectedRegisteredIds;
-                        if(e.target.checked) setSel(prev=>Array.from(new Set([...prev,...filteredUsers.map(u=>u.id)])));
-                        else setSel(prev=>prev.filter(id=>!filteredUsers.some(u=>u.id===id)));
-                      }}
-                      style={{width:15,height:15,cursor:"pointer"}} />
-                  </th>
-                  {personnelTab==="unregistered"
-                    ? ["ID No.","Name","Department","Company","Plant","Reg. Code","Status","Action"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
-                    : ["ID No.","Name","Role","Credit Limit","Balance","Actions","Company","Plant","Department","Phone","Username"].map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))
-                  }
+                  {isAdminLike&&(
+                    <th style={{padding:"11px 14px",width:36}}>
+                      <input type="checkbox"
+                        checked={filteredUsers.length>0&&filteredUsers.every(u=>(personnelTab==="unregistered"?selectedUnregisteredIds:selectedRegisteredIds).includes(u.id))}
+                        onChange={e=>{
+                          const setSel = personnelTab==="unregistered" ? setSelectedUnregisteredIds : setSelectedRegisteredIds;
+                          if(e.target.checked) setSel(prev=>Array.from(new Set([...prev,...filteredUsers.map(u=>u.id)])));
+                          else setSel(prev=>prev.filter(id=>!filteredUsers.some(u=>u.id===id)));
+                        }}
+                        style={{width:15,height:15,cursor:"pointer"}} />
+                    </th>
+                  )}
+                  {(personnelTab==="unregistered"
+                    ? (isAdminLike?["ID No.","Name","Department","Company","Plant","Reg. Code","Status","Action"]:["ID No.","Name","Department","Company","Plant","Reg. Code","Status"])
+                    : (isAdminLike?["ID No.","Name","Role","Credit Limit","Balance","Actions","Company","Plant","Department","Phone","Username"]:["ID No.","Name","Role","Credit Limit","Balance","Company","Plant","Department","Phone","Username"])
+                  ).map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))}
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length===0&&<tr><td colSpan={personnelTab==="unregistered"?9:12} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
+                {filteredUsers.length===0&&<tr><td colSpan={(personnelTab==="unregistered"?9:12)-(isAdminLike?0:1)} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No personnel found.</td></tr>}
                 {personnelTab==="unregistered" ? filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                    <td style={{padding:"12px 14px"}}>
-                      <input type="checkbox" checked={selectedUnregisteredIds.includes(u.id)}
-                        onChange={e=>{
-                          if(e.target.checked) setSelectedUnregisteredIds(prev=>[...prev,u.id]);
-                          else setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));
-                        }}
-                        style={{width:15,height:15,cursor:"pointer"}} />
-                    </td>
+                    {isAdminLike&&(
+                      <td style={{padding:"12px 14px"}}>
+                        <input type="checkbox" checked={selectedUnregisteredIds.includes(u.id)}
+                          onChange={e=>{
+                            if(e.target.checked) setSelectedUnregisteredIds(prev=>[...prev,u.id]);
+                            else setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));
+                          }}
+                          style={{width:15,height:15,cursor:"pointer"}} />
+                      </td>
+                    )}
                     <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600}}>{u.idNumber||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -4920,16 +4929,18 @@ export default function KFCanteen() {
                           <div style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</div>
                           {u.position&&<div style={{fontSize:11,color:"#9CA3AF"}}>{u.position}</div>}
                         </div>
-                        <button onClick={()=>{setEditEmployeeTarget(u);setEditEmployeeForm({name:u.name||"",idNumber:u.idNumber||"",department:u.department||"",position:u.position||"",company:u.company||"",phone:u.phone||"",username:u.username||""});setEditEmployeeError("");}}
-                          style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2,flexShrink:0}}>
-                          <Icon name="edit" size={12} color="#9CA3AF" />
-                        </button>
+                        {isAdminLike&&(
+                          <button onClick={()=>{setEditEmployeeTarget(u);setEditEmployeeForm({name:u.name||"",idNumber:u.idNumber||"",department:u.department||"",position:u.position||"",company:u.company||"",phone:u.phone||"",username:u.username||""});setEditEmployeeError("");}}
+                            style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2,flexShrink:0}}>
+                            <Icon name="edit" size={12} color="#9CA3AF" />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
                     <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
-                      {editPlantId===u.id ? (
+                      {isAdminLike&&editPlantId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
                             style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
@@ -4941,30 +4952,36 @@ export default function KFCanteen() {
                       ) : (
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <span style={{background:u.plant?PURPLE_LIGHT:"#F3F4F6",color:u.plant?PURPLE:"#9CA3AF",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"Unassigned"}</span>
-                          <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
-                            <Icon name="edit" size={12} color="#9CA3AF" />
-                          </button>
+                          {isAdminLike&&(
+                            <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
+                              <Icon name="edit" size={12} color="#9CA3AF" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
                     <td style={{padding:"12px 14px",color:"#374151",fontFamily:"monospace",fontSize:13,fontWeight:700,letterSpacing:"0.5px",whiteSpace:"nowrap"}}>{u.regCode||"—"}</td>
                     <td style={{padding:"12px 14px"}}><span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>Pending Registration</span></td>
-                    <td style={{padding:"12px 14px"}}>
-                      <button onClick={()=>{if(!window.confirm(`Remove ${u.name} from the employee list?`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
-                        <Icon name="trash" size={13} color="#991B1B" /> Remove
-                      </button>
-                    </td>
+                    {isAdminLike&&(
+                      <td style={{padding:"12px 14px"}}>
+                        <button onClick={()=>{if(!window.confirm(`Remove ${u.name} from the employee list?`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
+                          <Icon name="trash" size={13} color="#991B1B" /> Remove
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 )) : filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                    <td style={{padding:"12px 14px"}}>
-                      <input type="checkbox" checked={selectedRegisteredIds.includes(u.id)}
-                        onChange={e=>{
-                          if(e.target.checked) setSelectedRegisteredIds(prev=>[...prev,u.id]);
-                          else setSelectedRegisteredIds(prev=>prev.filter(id=>id!==u.id));
-                        }}
-                        style={{width:15,height:15,cursor:"pointer"}} />
-                    </td>
+                    {isAdminLike&&(
+                      <td style={{padding:"12px 14px"}}>
+                        <input type="checkbox" checked={selectedRegisteredIds.includes(u.id)}
+                          onChange={e=>{
+                            if(e.target.checked) setSelectedRegisteredIds(prev=>[...prev,u.id]);
+                            else setSelectedRegisteredIds(prev=>prev.filter(id=>id!==u.id));
+                          }}
+                          style={{width:15,height:15,cursor:"pointer"}} />
+                      </td>
+                    )}
                     <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{u.idNumber||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -4973,14 +4990,16 @@ export default function KFCanteen() {
                           <div style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</div>
                           {u.position&&<div style={{fontSize:11,color:"#9CA3AF"}}>{u.position}</div>}
                         </div>
-                        <button onClick={()=>{setEditEmployeeTarget(u);setEditEmployeeForm({name:u.name||"",idNumber:u.idNumber||"",department:u.department||"",position:u.position||"",company:u.company||"",phone:u.phone||"",username:u.username||""});setEditEmployeeError("");}}
-                          style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2,flexShrink:0}}>
-                          <Icon name="edit" size={12} color="#9CA3AF" />
-                        </button>
+                        {isAdminLike&&(
+                          <button onClick={()=>{setEditEmployeeTarget(u);setEditEmployeeForm({name:u.name||"",idNumber:u.idNumber||"",department:u.department||"",position:u.position||"",company:u.company||"",phone:u.phone||"",username:u.username||""});setEditEmployeeError("");}}
+                            style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2,flexShrink:0}}>
+                            <Icon name="edit" size={12} color="#9CA3AF" />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td style={{padding:"12px 14px"}}>
-                      {editRoleId===u.id ? (
+                      {isAdminLike&&editRoleId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <select defaultValue={u.role} onChange={e=>{ const newRole=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,role:newRole}:uu)); dbUpdateUser(u.id,{role:newRole}); setEditRoleId(null); }}
                             style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
@@ -4997,8 +5016,8 @@ export default function KFCanteen() {
                           <span style={{background:u.role==="superadmin"?"#FEF3C7":u.role==="admin"?PURPLE_LIGHT:u.role==="staff"?"#E0F2FE":"#D1FAE5",color:u.role==="superadmin"?"#92400E":u.role==="admin"?PURPLE:u.role==="staff"?"#0369A1":"#065F46",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>
                             {u.role==="user"?"Customer":u.role==="staff-admin"?"Staff-Admin":u.role==="staff"?"Staff":u.role==="superadmin"?"Superadmin":"Admin"}
                           </span>
-                          {/* only a superadmin can change another superadmin's role — prevents a regular admin from demoting/tampering with the moderation-trusted tier */}
-                          {(role==="superadmin"||u.role!=="superadmin")&&(
+                          {/* only a superadmin can change another superadmin's role — prevents a regular admin from demoting/tampering with the moderation-trusted tier. Staff-admin never gets role-edit at all -- Personnel is view-only for them. */}
+                          {isAdminLike&&(role==="superadmin"||u.role!=="superadmin")&&(
                             <button onClick={()=>setEditRoleId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
                               <Icon name="edit" size={12} color="#9CA3AF" />
                             </button>
@@ -5007,7 +5026,7 @@ export default function KFCanteen() {
                       )}
                     </td>
                     <td style={{padding:"12px 14px"}}>
-                      {editCreditId===u.id ? (
+                      {isAdminLike&&editCreditId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
                             style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
@@ -5025,25 +5044,27 @@ export default function KFCanteen() {
                       </span>
                       {u.creditBalance<100&&<span style={{display:"block",fontSize:10,color:"#EF4444",fontWeight:600}}>⚠️ Low</span>}
                     </td>
-                    <td style={{padding:"12px 14px"}}>
-                      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                        <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
-                          style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Set Limit
-                        </button>
-                        <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu));dbUpdateUser(u.id,{creditBalance:u.creditLimit});}}
-                          style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Reset
-                        </button>
-                        <button onClick={()=>{setResetTargets([u]);setResetStage("choose");setResetError("");setResetNewPassword("");setResetConfirmPassword("");}}
-                          style={{background:"#FEF3C7",color:"#92400E",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Reset Account
-                        </button>
-                      </div>
-                    </td>
+                    {isAdminLike&&(
+                      <td style={{padding:"12px 14px"}}>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                          <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
+                            style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                            Set Limit
+                          </button>
+                          <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu));dbUpdateUser(u.id,{creditBalance:u.creditLimit});}}
+                            style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                            Reset
+                          </button>
+                          <button onClick={()=>{setResetTargets([u]);setResetStage("choose");setResetError("");setResetNewPassword("");setResetConfirmPassword("");}}
+                            style={{background:"#FEF3C7",color:"#92400E",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                            Reset Account
+                          </button>
+                        </div>
+                      </td>
+                    )}
                     <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
-                      {editPlantId===u.id ? (
+                      {isAdminLike&&editPlantId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
                             style={{fontSize:12,padding:"4px 8px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none",cursor:"pointer"}}>
@@ -5055,9 +5076,11 @@ export default function KFCanteen() {
                       ) : (
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <span style={{background:u.plant?PURPLE_LIGHT:"#F3F4F6",color:u.plant?PURPLE:"#9CA3AF",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{u.plant||"Unassigned"}</span>
-                          <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
-                            <Icon name="edit" size={12} color="#9CA3AF" />
-                          </button>
+                          {isAdminLike&&(
+                            <button onClick={()=>setEditPlantId(u.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",padding:2}}>
+                              <Icon name="edit" size={12} color="#9CA3AF" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -5214,13 +5237,13 @@ export default function KFCanteen() {
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
-                  {["Name","Email","Phone","Username","Credit Limit","Balance","Actions"].map(h=>(
+                  {(isAdminLike?["Name","Email","Phone","Username","Credit Limit","Balance","Actions"]:["Name","Email","Phone","Username","Credit Limit","Balance"]).map(h=>(
                     <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredCustomers.length===0&&<tr><td colSpan={7} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No outside customers found.</td></tr>}
+                {filteredCustomers.length===0&&<tr><td colSpan={isAdminLike?7:6} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No outside customers found.</td></tr>}
                 {filteredCustomers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                     <td style={{padding:"12px 14px"}}>
@@ -5233,7 +5256,7 @@ export default function KFCanteen() {
                     <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
                     <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
                     <td style={{padding:"12px 14px"}}>
-                      {editCreditId===u.id ? (
+                      {isAdminLike&&editCreditId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
                             style={{width:75,fontSize:13,padding:"4px 7px",borderRadius:7,border:"1.5px solid "+PURPLE,outline:"none"}} />
@@ -5250,22 +5273,24 @@ export default function KFCanteen() {
                         ₱{(u.creditBalance||0).toLocaleString()}
                       </span>
                     </td>
-                    <td style={{padding:"12px 14px"}}>
-                      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                        <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
-                          style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Set Limit
-                        </button>
-                        <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu));dbUpdateUser(u.id,{creditBalance:u.creditLimit});}}
-                          style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          Reset
-                        </button>
-                        <button onClick={()=>{if(!window.confirm(`Remove ${u.name}'s account? This cannot be undone.`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);}}
-                          style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                          <Icon name="trash" size={12} color="#991B1B" /> Remove
-                        </button>
-                      </div>
-                    </td>
+                    {isAdminLike&&(
+                      <td style={{padding:"12px 14px"}}>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                          <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
+                            style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                            Set Limit
+                          </button>
+                          <button onClick={()=>{setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,creditBalance:uu.creditLimit}:uu));dbUpdateUser(u.id,{creditBalance:u.creditLimit});}}
+                            style={{background:"#D1FAE5",color:"#065F46",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                            Reset
+                          </button>
+                          <button onClick={()=>{if(!window.confirm(`Remove ${u.name}'s account? This cannot be undone.`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);}}
+                            style={{background:"#FEE2E2",border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                            <Icon name="trash" size={12} color="#991B1B" /> Remove
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
