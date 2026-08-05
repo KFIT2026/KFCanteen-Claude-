@@ -1353,16 +1353,19 @@ export default function KFCanteen() {
   /* ── self-service order edit/cancel (My Orders) ──
      Employees can move the plant or cancel their own self-placed orders
      (Weekly Menu / Short Order -- not OTC or Visitor Menu, which staff
-     already completed in person) within 2 hours of placing, regardless of
-     whether payment's already been confirmed. Cancelling keeps the order in
-     history (status:"cancelled" + cancelledAt) instead of deleting it, and
-     reverses the stock deduction and, if the balance was already taken,
-     the credit deduction from confirmPayment. */
+     already completed in person) within 2 hours of placing, but ONLY while
+     still Unpaid -- once staff confirms payment (confirmPayment) the
+     canteen has already received/served the order, so it's locked
+     regardless of how much of the 2 hours is left. Cancelling keeps the
+     order in history (status:"cancelled" + cancelledAt) instead of
+     deleting it, and restocks the grocery items that were deducted at
+     placement. */
   const ORDER_EDIT_WINDOW_MS = 2*60*60*1000;
   const isSelfPlacedOrder = (order) => order.source!=="otc" && order.source!=="visitor-menu";
   const isOrderEditable = (order) => {
     if(!order || !order.placedAt || order.status==="cancelled") return false;
     if(!isSelfPlacedOrder(order)) return false;
+    if(order.paymentType) return false; // already confirmed/served by staff
     return (Date.now()-new Date(order.placedAt).getTime()) < ORDER_EDIT_WINDOW_MS;
   };
 
@@ -1375,20 +1378,14 @@ export default function KFCanteen() {
 
   const cancelOrder = (orderId) => {
     const order = orders.find(o=>o.id===orderId);
+    // isOrderEditable already requires the order to still be Unpaid, so
+    // there's never a credit deduction to reverse here -- confirmPayment
+    // hasn't run yet.
     if(!order || !isOrderEditable(order)) return;
     const cancelledAt = new Date().toISOString();
     setOrders(prev=>prev.map(o=>o.id===orderId?{...o,status:"cancelled",cancelledAt}:o));
     dbUpdateOrder(orderId, { status:"cancelled", cancelledAt });
     restockInventoryForItems(order.items);
-    if(order.paymentType==="Credit"&&order.userId){
-      const liveUser = users.find(u=>u.id===order.userId);
-      if(liveUser){
-        const newBal = (liveUser.creditBalance||0)+order.total;
-        setUsers(prev=>prev.map(u=>u.id===order.userId?{...u,creditBalance:newBal}:u));
-        dbUpdateUser(order.userId, { creditBalance:newBal });
-        if(currentUser&&currentUser.id===order.userId) setCurrentUser(c=>({...c,creditBalance:newBal}));
-      }
-    }
   };
 
   const addOtherProduct = () => {
@@ -2646,7 +2643,7 @@ export default function KFCanteen() {
             {myOrderSearch&&<button onClick={()=>setMyOrderSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
           </div>
         </div>
-        <div style={{fontSize:12,color:"#9CA3AF",marginBottom:16}}>Weekly Menu and Short Order orders can have their plant changed or be cancelled within 2 hours of placing them.</div>
+        <div style={{fontSize:12,color:"#9CA3AF",marginBottom:16}}>Weekly Menu and Short Order orders can have their plant changed or be cancelled within 2 hours of placing them, as long as the canteen hasn't received/confirmed the order yet.</div>
         {myOrders.length===0 ? (
           <Empty msg="No orders yet" sub="Place an order from the menu to see it here." />
         ) : filteredMyOrders.length===0 ? (
