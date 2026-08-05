@@ -1120,7 +1120,10 @@ export default function KFCanteen() {
   };
 
   /* ── shared remarks + drink-upsell prompt (Short Order & Visitor Menu) ── */
-  const availableDrinks = otherProducts.filter(p=>(p.category||"").toLowerCase()==="drinks"&&p.available&&p.stock>0);
+  // Matches "Powdered Drinks" and "Soft Drinks" (the actual category names
+  // in Manage Groceries -- neither is literally "Drinks", so an exact-match
+  // filter here always returned zero results everywhere this list is used.
+  const availableDrinks = otherProducts.filter(p=>(p.category||"").toLowerCase().includes("drink")&&p.available&&p.stock>0);
   const openAddOptions = (item, onConfirm) => { setAddOptionsItem({item,onConfirm}); setAddOptionsRemarks(""); setAddOptionsDrinks({}); setAddOptionsSize(null); };
   const closeAddOptions = () => { setAddOptionsItem(null); setAddOptionsRemarks(""); setAddOptionsDrinks({}); setAddOptionsSize(null); };
   const confirmAddOptions = () => {
