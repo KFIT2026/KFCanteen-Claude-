@@ -588,6 +588,8 @@ export default function KFCanteen() {
 
   // over the counter (staff-encoded walk-up sale)
   const [otcType, setOtcType] = useState(null); // "employee" | "visitor" | "guard"
+  const [otcDate, setOtcDate] = useState(null); // YYYY-MM-DD when backdating a past-day sale, else null (= today)
+  const [showOtcDatePicker, setShowOtcDatePicker] = useState(false);
   const [otcSearch, setOtcSearch] = useState("");
   const [otcCustomer, setOtcCustomer] = useState(null); // employee user object OR {name} for guest
   const [otcCart, setOtcCart] = useState([]);
@@ -1201,7 +1203,7 @@ export default function KFCanteen() {
   };
 
   /* ── OVER THE COUNTER (staff-encoded walk-up sale) ── */
-  const resetOtc = () => { setOtcType(null); setOtcSearch(""); setOtcCustomer(null); setOtcCart([]); setOtcPaymentModal(false); setOtcMenuSearch(""); setOtcProductSearch(""); };
+  const resetOtc = () => { setOtcType(null); setOtcDate(null); setShowOtcDatePicker(false); setOtcSearch(""); setOtcCustomer(null); setOtcCart([]); setOtcPaymentModal(false); setOtcMenuSearch(""); setOtcProductSearch(""); };
   const otcAddItem = (item) => setOtcCart(prev=>{
     const ex = prev.find(c=>c.id===item.id);
     if(ex) return prev.map(c=>c.id===item.id?{...c,qty:c.qty+1}:c);
@@ -1218,7 +1220,7 @@ export default function KFCanteen() {
       id: nextOrderId(),
       user: otcCustomer.name,
       userId: isEmployee ? otcCustomer.id : null,
-      date: toDateKey(new Date()),
+      date: otcDate || toDateKey(new Date()),
       plant,
       items: otcCart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:null})),
       total: otcCartTotal,
@@ -5643,8 +5645,13 @@ export default function KFCanteen() {
 
     /* ── OVER THE COUNTER ── */
     if(activeTab==="otc") {
-      const todaysWeekKey = getWeekKey(TODAY_DATE);
-      const todaysDay = getDateKey(TODAY_DATE);
+      // otcDate lets staff backdate a sale to an earlier day (e.g. catching up
+      // on one that was never encoded) -- the dish list below pulls that
+      // day's actual menu (same week_key/day lookup the customer Weekly Menu
+      // tab uses), not today's, so it's accurate to what was really served.
+      const otcDateObj = otcDate ? new Date(otcDate+"T00:00:00") : TODAY_DATE;
+      const todaysWeekKey = getWeekKey(otcDateObj);
+      const todaysDay = getDateKey(otcDateObj);
       const todaysMenuItems = ((menu[todaysWeekKey]&&menu[todaysWeekKey][todaysDay])||[]).filter(i=>i.available);
       const availableProducts = otherProducts.filter(p=>p.available&&p.stock>0);
       const todaysMenuMatches = otcMenuSearch.trim() ? todaysMenuItems.filter(i=>i.name.toLowerCase().includes(otcMenuSearch.trim().toLowerCase())) : [];
@@ -5670,17 +5677,47 @@ export default function KFCanteen() {
 
           {otcDone&&<div style={{background:"#D1FAE5",color:"#065F46",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,fontWeight:600}}>✅ Sale completed and logged.</div>}
 
+          {/* Backdating indicator -- stays visible through every step so staff
+              never loses track of which day they're actually encoding for */}
+          {otcDate&&(
+            <div style={{background:PURPLE_LIGHT,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",maxWidth:560}}>
+              <span>📅 Encoding for <strong>{formatDateFull(otcDateObj)}</strong>, not today</span>
+              <button onClick={()=>setOtcDate(null)} style={{background:"#fff",border:"1px solid "+PURPLE+"44",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600,color:PURPLE,whiteSpace:"nowrap"}}>Use Today Instead</button>
+            </div>
+          )}
+
           {/* step 1: who's this for */}
           {!otcType&&(
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,maxWidth:560}}>
-              {[{id:"employee",label:"Employee",sub:"Cash or Credit"},{id:"visitor",label:"Visitor",sub:"Cash only"},{id:"guard",label:"Guard",sub:"Cash only"}].map(t=>(
-                <button key={t.id} onClick={()=>setOtcType(t.id)}
-                  style={{background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:14,padding:"22px 16px",cursor:"pointer",textAlign:"center"}}>
-                  <div style={{fontSize:15,fontWeight:700,color:"#111"}}>{t.label}</div>
-                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>{t.sub}</div>
+            showOtcDatePicker ? (
+              <div style={{background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:14,padding:"20px",maxWidth:340}}>
+                <label style={{fontSize:13,fontWeight:600,color:"#374151",display:"block",marginBottom:8}}>Which day is this sale actually for?</label>
+                <input type="date" max={toDateKey(new Date())} value={otcDate||toDateKey(new Date())}
+                  onChange={e=>setOtcDate(e.target.value)}
+                  style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none",marginBottom:6}} />
+                <div style={{fontSize:11,color:"#9CA3AF",marginBottom:14}}>The dish list will show that day's actual menu, not today's.</div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>{setOtcDate(null);setShowOtcDatePicker(false);}}
+                    style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
+                  <button onClick={()=>setShowOtcDatePicker(false)}
+                    style={{flex:2,background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:13,fontWeight:700}}>Confirm Date</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,maxWidth:560}}>
+                {[{id:"employee",label:"Employee",sub:"Cash or Credit"},{id:"visitor",label:"Visitor",sub:"Cash only"},{id:"guard",label:"Guard",sub:"Cash only"}].map(t=>(
+                  <button key={t.id} onClick={()=>setOtcType(t.id)}
+                    style={{background:"#fff",border:"1.5px solid #E5E7EB",borderRadius:14,padding:"22px 16px",cursor:"pointer",textAlign:"center"}}>
+                    <div style={{fontSize:15,fontWeight:700,color:"#111"}}>{t.label}</div>
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>{t.sub}</div>
+                  </button>
+                ))}
+                <button onClick={()=>setShowOtcDatePicker(true)}
+                  style={{background:"#fff",border:"1.5px dashed #D1D5DB",borderRadius:14,padding:"22px 16px",cursor:"pointer",textAlign:"center"}}>
+                  <div style={{fontSize:15,fontWeight:700,color:"#111"}}>Past Day</div>
+                  <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Backdate a sale</div>
                 </button>
-              ))}
-            </div>
+              </div>
+            )
           )}
 
           {/* step 2: identify the customer */}
@@ -5730,7 +5767,7 @@ export default function KFCanteen() {
               </div>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,alignItems:"start"}}>
                 <div>
-                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>Today's Menu</h3>
+                  <h3 style={{fontSize:14,fontWeight:700,color:"#111",margin:"0 0 8px"}}>{otcDate?`Menu for ${formatDateFull(otcDateObj)}`:"Today's Menu"}</h3>
                   <div style={{display:"flex",alignItems:"center",gap:8,border:"1.5px solid #E5E7EB",borderRadius:9,padding:"7px 12px",background:"#fff",marginBottom:10}}>
                     <Icon name="search" size={14} color="#9CA3AF" />
                     <input value={otcMenuSearch} onChange={e=>setOtcMenuSearch(e.target.value)} placeholder="Search today's menu..."
