@@ -548,6 +548,11 @@ export default function KFCanteen() {
   const [addOptionsDrinks, setAddOptionsDrinks] = useState({}); // {productId: qty}
   const [addOptionsSize, setAddOptionsSize] = useState(null); // {label, price} — required when item.sizes is non-empty
 
+  // Weekly Menu cart drink upsell -- shown once at checkout time (Place Order
+  // click), not per-item like addOptions above. Always skippable.
+  const [showDrinkUpsell, setShowDrinkUpsell] = useState(false);
+  const [drinkUpsellQtys, setDrinkUpsellQtys] = useState({}); // {productId: qty}
+
   // visitor menu (admin/staff-admin only, fixed menu, own inline checkout)
   const [visitorCart, setVisitorCart] = useState([]);
   const [visitorMenuDone, setVisitorMenuDone] = useState(false);
@@ -2493,7 +2498,10 @@ export default function KFCanteen() {
                 <div style={{fontSize:12,color:"#6B7280"}}>Total Amount</div>
                 <div style={{fontSize:22,fontWeight:800,color:PURPLE}}>₱{cartTotal}</div>
               </div>
-              <button onClick={()=>{setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF Main");}} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"11px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+              <button onClick={()=>{
+                if(availableDrinks.length>0){ setDrinkUpsellQtys({}); setShowDrinkUpsell(true); }
+                else { setShowPlantModal(true); setOrderPlant(currentUser.plant||"KF Main"); }
+              }} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"11px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
                 Place Order
               </button>
             </div>
@@ -5920,6 +5928,56 @@ export default function KFCanteen() {
           </div>
         );
       })()}
+      {/* Weekly Menu cart drink upsell -- shown once at "Place Order" time,
+          not per item. Always skippable via "No thanks, continue". */}
+      {showDrinkUpsell&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add a Drink?</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Totally optional — skip if you don't want one</div>
+              </div>
+              <button onClick={()=>{setShowDrinkUpsell(false);setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF Main");}}
+                style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
+            </div>
+            <div style={{padding:"22px"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {availableDrinks.map(d=>{
+                  const qty = drinkUpsellQtys[d.id]||0;
+                  return (
+                    <div key={d.id} style={{display:"flex",alignItems:"center",gap:10,background:"#F9FAFB",borderRadius:10,padding:"8px 12px"}}>
+                      <span style={{fontSize:20}}>{d.isPhoto&&d.photo?<img src={d.photo} alt="" style={{width:28,height:28,borderRadius:6,objectFit:"cover"}} />:d.emoji}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,color:"#111"}}>{d.name}</div>
+                        <div style={{fontSize:11,color:"#6B7280"}}>₱{d.price}</div>
+                      </div>
+                      <button onClick={()=>setDrinkUpsellQtys(p=>({...p,[d.id]:Math.max(0,(p[d.id]||0)-1)}))} disabled={qty===0}
+                        style={{width:26,height:26,borderRadius:7,border:"1px solid #E5E7EB",background:"#fff",cursor:qty===0?"not-allowed":"pointer",fontSize:14,color:"#374151",fontWeight:700}}>−</button>
+                      <span style={{minWidth:18,textAlign:"center",fontSize:13,fontWeight:700,color:"#111"}}>{qty}</span>
+                      <button onClick={()=>setDrinkUpsellQtys(p=>({...p,[d.id]:(p[d.id]||0)+1}))}
+                        style={{width:26,height:26,borderRadius:7,border:"1px solid #E5E7EB",background:"#fff",cursor:"pointer",fontSize:14,color:"#374151",fontWeight:700}}>+</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:10,marginTop:20}}>
+                <button onClick={()=>{setShowDrinkUpsell(false);setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF Main");}}
+                  style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>
+                  No thanks, continue
+                </button>
+                <button onClick={()=>{
+                  availableDrinks.forEach(d=>{ const q=drinkUpsellQtys[d.id]||0; if(q>0) addToCart(d,null,{qty:q}); });
+                  setShowDrinkUpsell(false);setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF Main");
+                }} disabled={!Object.values(drinkUpsellQtys).some(q=>q>0)}
+                  style={{flex:2,background:Object.values(drinkUpsellQtys).some(q=>q>0)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:Object.values(drinkUpsellQtys).some(q=>q>0)?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  <Icon name="plus" size={14} color="#fff" /> Add & Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Add/Edit Dish modal — lives at the top level (not inside the Manage Dishes tab) so it can also
           be opened from Manage Menu's "Create New Dish" shortcut regardless of the active tab */}
       {showAddDish&&(
