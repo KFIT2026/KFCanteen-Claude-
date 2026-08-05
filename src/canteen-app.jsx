@@ -142,6 +142,32 @@ const formatServing = (qty, unit) => (qty==null||qty==="") ? "" : `${qty}${unit=
 const formatQtyLong = (qty, unit) => unit==="g" ? `${(qty/1000).toFixed(2)}kg` : `${Number(qty.toFixed(2))} ${unitSuffix(unit,qty)}`;
 const toProperCase = str => str.trim().replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
+// Uploaded photos go straight into the database as base64 text (no object
+// storage), so an uncompressed phone photo lands directly in every fetch of
+// that table forever. Downscale + re-encode as JPEG before storing so a
+// typical product/dish/menu photo runs ~15-30KB instead of 100-165KB.
+const compressImageFile = (file, maxDim=800, quality=0.7) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(reader.error);
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error("Could not read that image file."));
+    img.onload = () => {
+      let { width, height } = img;
+      if(width>maxDim || height>maxDim){
+        if(width>=height){ height = Math.round(height*(maxDim/width)); width = maxDim; }
+        else { width = Math.round(width*(maxDim/height)); height = maxDim; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
 /* ── footer (shown on every page, fixed height so it never shifts between pages) ── */
 const FOOTER_HEIGHT = 156;
 const Footer = ({offsetLeft=0}) => (
@@ -631,9 +657,7 @@ export default function KFCanteen() {
   const productPhotoInputRef = useRef(null);
   const handleProductPhotoFile = useCallback((file) => {
     if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewProduct(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
+    compressImageFile(file).then(dataUrl=>setNewProduct(p=>({...p, photo:dataUrl})));
   }, []);
   const [productNameSuggestions, setProductNameSuggestions] = useState([]);
 
@@ -660,9 +684,7 @@ export default function KFCanteen() {
   const dishPhotoInputRef = useRef(null);
   const handleDishPhotoFile = useCallback((file) => {
     if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewDish(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
+    compressImageFile(file).then(dataUrl=>setNewDish(p=>({...p, photo:dataUrl})));
   }, []);
   const [dishSearch, setDishSearch] = useState("");
   const [dishLinkSearch, setDishLinkSearch] = useState("");
@@ -731,9 +753,10 @@ export default function KFCanteen() {
   const handleReceiptPhotoFiles = useCallback((fileList) => {
     Array.from(fileList||[]).forEach(file=>{
       if(!file||!file.type.startsWith("image/")) return;
-      const reader = new FileReader();
-      reader.onload = (e) => setReceiptPhotos(prev=>[...prev, { tempId:"tmp"+Date.now()+Math.random(), photo:e.target.result, amount:"" }]);
-      reader.readAsDataURL(file);
+      // Larger max dimension + higher quality than product/dish photos --
+      // receipts need to stay legible (prices, item lines) at higher zoom.
+      compressImageFile(file, 1400, 0.8).then(dataUrl=>
+        setReceiptPhotos(prev=>[...prev, { tempId:"tmp"+Date.now()+Math.random(), photo:dataUrl, amount:"" }]));
     });
   }, []);
 
@@ -1121,10 +1144,13 @@ export default function KFCanteen() {
   };
 
   /* ── shared remarks + drink-upsell prompt (Short Order & Visitor Menu) ── */
-  // Matches "Powdered Drinks" and "Soft Drinks" (the actual category names
+  // Matches "Powdered Drinks" and "Cold Drinks" (the actual category names
   // in Manage Groceries -- neither is literally "Drinks", so an exact-match
   // filter here always returned zero results everywhere this list is used.
+  // Used by the per-item upsell (Short Order / Visitor Menu).
   const availableDrinks = otherProducts.filter(p=>(p.category||"").toLowerCase().includes("drink")&&p.available&&p.stock>0);
+  // Weekly Menu checkout upsell only offers Cold Drinks, not Powdered Drinks.
+  const availableColdDrinks = otherProducts.filter(p=>(p.category||"").toLowerCase()==="cold drinks"&&p.available&&p.stock>0);
   const openAddOptions = (item, onConfirm) => { setAddOptionsItem({item,onConfirm}); setAddOptionsRemarks(""); setAddOptionsDrinks({}); setAddOptionsSize(null); };
   const closeAddOptions = () => { setAddOptionsItem(null); setAddOptionsRemarks(""); setAddOptionsDrinks({}); setAddOptionsSize(null); };
   const confirmAddOptions = () => {
@@ -1323,9 +1349,7 @@ export default function KFCanteen() {
   const shortOrderPhotoInputRef = useRef(null);
   const handleShortOrderPhotoFile = useCallback((file) => {
     if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewShortOrderItem(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
+    compressImageFile(file).then(dataUrl=>setNewShortOrderItem(p=>({...p, photo:dataUrl})));
   }, []);
   const addShortOrderItem = () => {
     const validSizes = (newShortOrderItem.sizes||[]).filter(s=>s.label.trim()&&parseFloat(s.price)>0).map(s=>({label:s.label.trim(), price:parseFloat(s.price)}));
@@ -1353,9 +1377,7 @@ export default function KFCanteen() {
   const visitorMenuPhotoInputRef = useRef(null);
   const handleVisitorMenuPhotoFile = useCallback((file) => {
     if(!file||!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setNewVisitorMenuItem(p=>({...p, photo:e.target.result}));
-    reader.readAsDataURL(file);
+    compressImageFile(file).then(dataUrl=>setNewVisitorMenuItem(p=>({...p, photo:dataUrl})));
   }, []);
   const addVisitorMenuItem = () => {
     if(!newVisitorMenuItem.name||!newVisitorMenuItem.price||parseFloat(newVisitorMenuItem.price)<=0) return;
@@ -2510,7 +2532,7 @@ export default function KFCanteen() {
                 <div style={{fontSize:22,fontWeight:800,color:PURPLE}}>₱{cartTotal}</div>
               </div>
               <button onClick={()=>{
-                if(availableDrinks.length>0){ setDrinkUpsellQtys({}); setShowDrinkUpsell(true); }
+                if(availableColdDrinks.length>0){ setDrinkUpsellQtys({}); setShowDrinkUpsell(true); }
                 else { setShowPlantModal(true); setOrderPlant(currentUser.plant||"KF Main"); }
               }} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"11px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
                 Place Order
@@ -5962,7 +5984,7 @@ export default function KFCanteen() {
             </div>
             <div style={{padding:"22px"}}>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {availableDrinks.map(d=>{
+                {availableColdDrinks.map(d=>{
                   const qty = drinkUpsellQtys[d.id]||0;
                   return (
                     <div key={d.id} style={{display:"flex",alignItems:"center",gap:10,background:"#F9FAFB",borderRadius:10,padding:"8px 12px"}}>
@@ -5986,7 +6008,7 @@ export default function KFCanteen() {
                   No thanks, continue
                 </button>
                 <button onClick={()=>{
-                  availableDrinks.forEach(d=>{ const q=drinkUpsellQtys[d.id]||0; if(q>0) addToCart(d,null,{qty:q}); });
+                  availableColdDrinks.forEach(d=>{ const q=drinkUpsellQtys[d.id]||0; if(q>0) addToCart(d,null,{qty:q}); });
                   setShowDrinkUpsell(false);setShowPlantModal(true);setOrderPlant(currentUser.plant||"KF Main");
                 }} disabled={!Object.values(drinkUpsellQtys).some(q=>q>0)}
                   style={{flex:2,background:Object.values(drinkUpsellQtys).some(q=>q>0)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:Object.values(drinkUpsellQtys).some(q=>q>0)?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
