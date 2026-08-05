@@ -283,12 +283,14 @@ const orderToDb = (o) => ({
   source: o.source || "app",
   encoded_by: o.encodedBy || null,
   guest_type: o.guestType || null,
+  placed_at: o.placedAt || null,
 });
 
 const orderFromDb = (r) => ({
   id: r.id, userId: r.user_id, user: r.user_name, date: r.date, plant: r.plant,
   items: r.items, total: Number(r.total), paymentType: r.payment_type, time: r.time,
   source: r.source || "app", encodedBy: r.encoded_by, guestType: r.guest_type,
+  placedAt: r.placed_at, status: r.status || "active", cancelledAt: r.cancelled_at,
 });
 
 export const fetchOrders = async () => {
@@ -305,6 +307,9 @@ export const dbInsertOrder = async (order) => {
 export const dbUpdateOrder = async (id, patch) => {
   const dbPatch = {};
   if ("paymentType" in patch) dbPatch.payment_type = patch.paymentType;
+  if ("plant" in patch) dbPatch.plant = patch.plant;
+  if ("status" in patch) dbPatch.status = patch.status;
+  if ("cancelledAt" in patch) dbPatch.cancelled_at = patch.cancelledAt;
   const { error } = await supabase.from("orders").update(dbPatch).eq("id", id);
   if (error) console.error("dbUpdateOrder failed:", error);
 };

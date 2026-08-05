@@ -631,6 +631,9 @@ export default function KFCanteen() {
   const [stockAddVal, setStockAddVal] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [myOrderSearch, setMyOrderSearch] = useState("");
+  const [editPlantOrderId, setEditPlantOrderId] = useState(null); // orderId whose inline plant-edit is open
+  const [editPlantValue, setEditPlantValue] = useState("");
+  const [cancelConfirmOrderId, setCancelConfirmOrderId] = useState(null); // orderId pending cancel confirmation
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(typeof window!=="undefined" ? window.innerWidth>=1024 : true);
   useEffect(() => {
@@ -1105,6 +1108,29 @@ export default function KFCanteen() {
     // dishes no longer carry a recipe, so ordering doesn't auto-deduct them.
   };
 
+  // Reverses deductInventoryForItems for a cancelled order. Matches by
+  // productId when the order has it (set on every order placed since this
+  // feature shipped); falls back to matching by product name for orders
+  // placed before productId existed, since their stored items never
+  // captured the product's id at all.
+  const restockInventoryForItems = (items) => {
+    setOtherProducts(prev => prev.map(p => {
+      const item = items.find(c => (c.productId ? c.productId===p.id : c.name===p.name));
+      if (!item) return p;
+      const newStock = p.stock + item.qty;
+      const logEntry = {
+        id:"il"+Date.now()+p.id, product:p.name, emoji:p.emoji,
+        type:"IN", qty:item.qty, before:p.stock, after:newStock,
+        by:currentUser.name,
+        time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+      };
+      setInventoryLog(log=>[logEntry,...log]);
+      dbInsertLog(logEntry);
+      dbUpdateProduct(p.id, { stock:newStock, available: newStock>0 });
+      return { ...p, stock: newStock, available: newStock > 0 };
+    }));
+  };
+
   const placeOrder = () => {
     if(!cart.length) return;
     const plant = orderPlant || currentUser.plant || "KF Main";
@@ -1132,8 +1158,9 @@ export default function KFCanteen() {
     const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
       date: orderDate,
       plant: plant,
-      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null,remarks:c.remarks||null,size:c.sizeLabel||null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
-      source: cart.some(c=>c.fixedMenu) ? "short-order" : undefined };
+      items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null,remarks:c.remarks||null,size:c.sizeLabel||null,productId:c.id||null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+      source: cart.some(c=>c.fixedMenu) ? "short-order" : undefined,
+      placedAt: new Date().toISOString(), status:"active" };
     setOrders(prev=>[order,...prev]);
     dbInsertOrder(order);
     deductInventoryForItems(cart);
@@ -1321,6 +1348,47 @@ export default function KFCanteen() {
       }));
     }
     setPaymentModal(null);
+  };
+
+  /* ── self-service order edit/cancel (My Orders) ──
+     Employees can move the plant or cancel their own self-placed orders
+     (Weekly Menu / Short Order -- not OTC or Visitor Menu, which staff
+     already completed in person) within 2 hours of placing, regardless of
+     whether payment's already been confirmed. Cancelling keeps the order in
+     history (status:"cancelled" + cancelledAt) instead of deleting it, and
+     reverses the stock deduction and, if the balance was already taken,
+     the credit deduction from confirmPayment. */
+  const ORDER_EDIT_WINDOW_MS = 2*60*60*1000;
+  const isSelfPlacedOrder = (order) => order.source!=="otc" && order.source!=="visitor-menu";
+  const isOrderEditable = (order) => {
+    if(!order || !order.placedAt || order.status==="cancelled") return false;
+    if(!isSelfPlacedOrder(order)) return false;
+    return (Date.now()-new Date(order.placedAt).getTime()) < ORDER_EDIT_WINDOW_MS;
+  };
+
+  const editOrderPlant = (orderId, newPlant) => {
+    const order = orders.find(o=>o.id===orderId);
+    if(!order || !isOrderEditable(order) || !newPlant || newPlant===order.plant) return;
+    setOrders(prev=>prev.map(o=>o.id===orderId?{...o,plant:newPlant}:o));
+    dbUpdateOrder(orderId, { plant:newPlant });
+  };
+
+  const cancelOrder = (orderId) => {
+    const order = orders.find(o=>o.id===orderId);
+    if(!order || !isOrderEditable(order)) return;
+    const cancelledAt = new Date().toISOString();
+    setOrders(prev=>prev.map(o=>o.id===orderId?{...o,status:"cancelled",cancelledAt}:o));
+    dbUpdateOrder(orderId, { status:"cancelled", cancelledAt });
+    restockInventoryForItems(order.items);
+    if(order.paymentType==="Credit"&&order.userId){
+      const liveUser = users.find(u=>u.id===order.userId);
+      if(liveUser){
+        const newBal = (liveUser.creditBalance||0)+order.total;
+        setUsers(prev=>prev.map(u=>u.id===order.userId?{...u,creditBalance:newBal}:u));
+        dbUpdateUser(order.userId, { creditBalance:newBal });
+        if(currentUser&&currentUser.id===order.userId) setCurrentUser(c=>({...c,creditBalance:newBal}));
+      }
+    }
   };
 
   const addOtherProduct = () => {
@@ -2567,7 +2635,7 @@ export default function KFCanteen() {
       );
       return (
       <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:12}}>
           <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
             <Icon name="orders" size={20} color={PURPLE} /> My Orders
           </h2>
@@ -2578,6 +2646,7 @@ export default function KFCanteen() {
             {myOrderSearch&&<button onClick={()=>setMyOrderSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#9CA3AF",padding:0}}>✕</button>}
           </div>
         </div>
+        <div style={{fontSize:12,color:"#9CA3AF",marginBottom:16}}>Weekly Menu and Short Order orders can have their plant changed or be cancelled within 2 hours of placing them.</div>
         {myOrders.length===0 ? (
           <Empty msg="No orders yet" sub="Place an order from the menu to see it here." />
         ) : filteredMyOrders.length===0 ? (
@@ -2585,19 +2654,23 @@ export default function KFCanteen() {
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {filteredMyOrders.map(order=>(
-              <div key={order.id} style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"16px 18px"}}>
+              <div key={order.id} style={{background:"#fff",borderRadius:14,border:"1px solid "+(order.status==="cancelled"?"#FECACA":"#E5E7EB"),padding:"16px 18px",opacity:order.status==="cancelled"?0.7:1}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div>
-                    <div style={{fontWeight:700,fontSize:14,color:"#111",display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontWeight:700,fontSize:14,color:"#111",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                       Order #{order.id}
                       {order.source==="otc"&&<span style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 8px",borderRadius:10}}>🧾 Over the Counter</span>}
                       {order.source==="short-order"&&<span style={{fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 8px",borderRadius:10}}>🍽️ Short Order</span>}
                       {order.source==="visitor-menu"&&<span style={{fontSize:10,background:"#DBEAFE",color:"#1E40AF",fontWeight:700,padding:"1px 8px",borderRadius:10}}>🙋 Visitor Menu</span>}
+                      {isSelfPlacedOrder(order)&&order.source!=="short-order"&&<span style={{fontSize:10,background:"#F3F4F6",color:"#374151",fontWeight:700,padding:"1px 8px",borderRadius:10}}>🛒 Weekly Menu</span>}
                     </div>
-                    <div style={{fontSize:12,color:"#9CA3AF"}}>{order.date} · {order.time}</div>
+                    <div style={{fontSize:12,color:"#9CA3AF"}}>{order.date} · {order.time} · 📍 {order.plant}</div>
                   </div>
-                  {order.paymentType&&<span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>{order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}</span>}
-                  {!order.paymentType&&<span style={{background:"#FEF3C7",color:"#92400E",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>⏳ Unpaid</span>}
+                  {order.status==="cancelled"
+                    ? <span style={{background:"#FEE2E2",color:"#991B1B",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>🚫 Cancelled</span>
+                    : order.paymentType
+                      ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>{order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}</span>
+                      : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:700}}>⏳ Unpaid</span>}
                 </div>
                 {order.items.map((it,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#374151",padding:"4px 0",alignItems:"flex-start"}}>
@@ -2614,6 +2687,44 @@ export default function KFCanteen() {
                 <div style={{borderTop:"1px solid #F3F4F6",marginTop:10,paddingTop:10,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
                   <span>Total</span><span style={{color:PURPLE}}>₱{order.total}</span>
                 </div>
+
+                {order.status==="cancelled" ? (
+                  <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6",fontSize:11,color:"#991B1B"}}>
+                    🚫 Cancelled {order.cancelledAt?"on "+new Date(order.cancelledAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date(order.cancelledAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""}
+                  </div>
+                ) : isOrderEditable(order) && (
+                  editPlantOrderId===order.id ? (
+                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      <select value={editPlantValue} onChange={e=>setEditPlantValue(e.target.value)}
+                        style={{fontSize:12,padding:"7px 10px",borderRadius:7,border:"1px solid #E5E7EB",color:"#111",background:"#fff"}}>
+                        {PLANTS.map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+                      <button onClick={()=>{editOrderPlant(order.id, editPlantValue);setEditPlantOrderId(null);}}
+                        style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>Save</button>
+                      <button onClick={()=>setEditPlantOrderId(null)}
+                        style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600}}>Cancel</button>
+                    </div>
+                  ) : cancelConfirmOrderId===order.id ? (
+                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6"}}>
+                      <div style={{background:"#FEF2F2",borderRadius:9,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                        <span style={{fontSize:12,color:"#991B1B",fontWeight:600}}>Cancel this order? This can't be undone.</span>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={()=>{cancelOrder(order.id);setCancelConfirmOrderId(null);}}
+                            style={{background:"#DC2626",color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>Yes, Cancel</button>
+                          <button onClick={()=>setCancelConfirmOrderId(null)}
+                            style={{background:"#fff",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600}}>Keep Order</button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6",display:"flex",gap:8}}>
+                      <button onClick={()=>{setEditPlantOrderId(order.id);setEditPlantValue(order.plant);}}
+                        style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600}}>📍 Edit Plant</button>
+                      <button onClick={()=>setCancelConfirmOrderId(order.id)}
+                        style={{background:"#FEF2F2",color:"#DC2626",border:"1px solid #FECACA",borderRadius:7,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600}}>✕ Cancel Order</button>
+                    </div>
+                  )
+                )}
               </div>
             ))}
           </div>
@@ -3301,13 +3412,14 @@ export default function KFCanteen() {
                     // into an actual date+time before comparing.
                     return parseOrderTimestamp(b) - parseOrderTimestamp(a);
                   }).map(order=>(
-                    <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer"}}>
+                    <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer",opacity:order.status==="cancelled"?0.55:1}}>
                       <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
                       <td style={{padding:"11px 14px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>
                         {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
                         {order.source==="otc"&&<div style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🧾 OTC</div>}
                         {order.source==="short-order"&&<div style={{fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🍽️ Short Order</div>}
                         {order.source==="visitor-menu"&&<div style={{fontSize:10,background:"#DBEAFE",color:"#1E40AF",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🙋 Visitor Menu</div>}
+                        {order.status==="cancelled"&&<div style={{fontSize:10,background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🚫 Cancelled{order.cancelledAt?" "+new Date(order.cancelledAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})+" "+new Date(order.cancelledAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""}</div>}
                       </td>
                       <td style={{padding:"11px 14px"}}>
                         {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
@@ -3325,20 +3437,24 @@ export default function KFCanteen() {
                       <td style={{padding:"11px 14px",fontWeight:700,color:PURPLE,whiteSpace:"nowrap"}}>₱{order.total}</td>
                       <td style={{padding:"11px 14px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
                       <td style={{padding:"11px 14px"}}>
-                        {order.paymentType
-                          ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>
-                              {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
-                            </span>
-                          : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
+                        {order.status==="cancelled"
+                          ? <span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>🚫 Cancelled</span>
+                          : order.paymentType
+                            ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>
+                                {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
+                              </span>
+                            : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
                         }
                       </td>
                       <td style={{padding:"11px 14px"}} onClick={e=>e.stopPropagation()}>
-                        {!order.paymentType
-                          ? <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
-                              style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                              💰 Collect
-                            </button>
-                          : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
+                        {order.status==="cancelled"
+                          ? <span style={{fontSize:11,color:"#991B1B",whiteSpace:"nowrap"}}>🚫 Cancelled</span>
+                          : !order.paymentType
+                            ? <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
+                                style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                                💰 Collect
+                              </button>
+                            : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
                         }
                       </td>
                     </tr>
