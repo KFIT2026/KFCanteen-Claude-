@@ -1250,6 +1250,17 @@ export default function KFCanteen() {
     setOtcPaymentModal(false);
     setOtcDone(true);
     setTimeout(()=>setOtcDone(false),3000);
+    if(otcDate){
+      // Backdating is a catch-up session -- after each sale, go back to
+      // "who's this for" for the next past-day customer instead of staying
+      // on this one's cart. otcDate/showOtcDatePicker are left alone so the
+      // date banner and picked date persist across the whole session.
+      setOtcType(null);
+      setOtcCustomer(null);
+      setOtcSearch("");
+      setOtcMenuSearch("");
+      setOtcProductSearch("");
+    }
   };
 
   /* ── MENU MGMT ── */
