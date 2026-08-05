@@ -604,7 +604,7 @@ export default function KFCanteen() {
   // other products category
   const [orderSearch, setOrderSearch] = useState("");
   const [orderPlantFilter, setOrderPlantFilter] = useState("All");
-  const [orderShowAllDates, setOrderShowAllDates] = useState(false);
+  const [orderShowAllDates, setOrderShowAllDates] = useState(true);
   const [orderDateFilter, setOrderDateFilter] = useState(toDateKey(new Date()));
   const [paymentModal, setPaymentModal] = useState(null);
   const [orderDetailModal, setOrderDetailModal] = useState(null);
@@ -2112,7 +2112,7 @@ export default function KFCanteen() {
             const isActive = activeTab===n.id;
             return (
               <button key={n.id}
-                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderShowAllDates(false); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
+                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderShowAllDates(true); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",border:"none",background:isActive?PURPLE_LIGHT:"transparent",cursor:"pointer",textAlign:"left",borderLeft:`3px solid ${isActive?PURPLE:"transparent"}`,transition:"all 0.1s"}}>
                 <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
                 <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
