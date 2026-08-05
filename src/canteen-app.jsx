@@ -626,6 +626,7 @@ export default function KFCanteen() {
   const [inventoryLog, setInventoryLog] = useState([]);
   useEffect(() => { fetchInventoryLog().then(setInventoryLog); }, []);
   const [newProduct, setNewProduct] = useState({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
+  const [editProductId, setEditProductId] = useState(null);
   const [productDragOver, setProductDragOver] = useState(false);
   const productPhotoInputRef = useRef(null);
   const handleProductPhotoFile = useCallback((file) => {
@@ -1288,11 +1289,18 @@ export default function KFCanteen() {
     const price = Math.max(0, parseFloat(newProduct.price)||0);
     const stock = Math.max(0, parseInt(newProduct.stock)||0);
     if(price<=0) return;
-    const p = { id:"op"+Date.now(), name:newProduct.name, buyPrice, price, emoji:newProduct.emoji||"🛍️", photo:newProduct.photo||null, isPhoto:!!newProduct.photo, category:newProduct.category||"Others", stock, available:stock>0 };
-    setOtherProducts(prev=>[...prev, p]);
-    dbInsertProduct(p);
+    const fields = { name:newProduct.name, buyPrice, price, emoji:newProduct.emoji||"🛍️", photo:newProduct.photo||null, isPhoto:!!newProduct.photo, category:newProduct.category||"Others", stock, available:stock>0 };
+    if(editProductId){
+      setOtherProducts(prev=>prev.map(p=>p.id===editProductId?{...p,...fields}:p));
+      dbUpdateProduct(editProductId, fields);
+    } else {
+      const p = { id:"op"+Date.now(), ...fields };
+      setOtherProducts(prev=>[...prev, p]);
+      dbInsertProduct(p);
+    }
     setNewProduct({ name:"", buyPrice:"", price:"", emoji:"🛍️", category:"Others", stock:"", photo:null });
     setProductNameSuggestions([]);
+    setEditProductId(null);
     setShowAddProduct(false);
   };
   const removeOtherProduct = (id) => { if(!window.confirm("Remove this product?")) return; setOtherProducts(prev=>prev.filter(p=>p.id!==id)); dbDeleteProduct(id); };
@@ -3376,7 +3384,7 @@ export default function KFCanteen() {
             <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:0,display:"flex",alignItems:"center",gap:10}}>
               <Icon name="products" size={20} color={PURPLE} /> Manage Groceries
             </h2>
-            <button onClick={()=>setShowAddProduct(true)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>{setEditProductId(null);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setShowAddProduct(true);}} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
               <Icon name="plus" size={14} color="#fff" /> Add Product
             </button>
           </div>
@@ -3437,6 +3445,14 @@ export default function KFCanteen() {
                     <div style={{fontSize:16,fontWeight:800,color:oos?"#EF4444":p.stock<=5?"#F59E0B":"#111"}}>{p.stock}</div>
                     <div style={{fontSize:10,color:"#9CA3AF"}}>in stock</div>
                   </div>
+                  {/* edit info button */}
+                  <button onClick={()=>{
+                    setEditProductId(p.id);
+                    setNewProduct({ name:p.name, buyPrice:String(p.buyPrice||0), price:String(p.price), emoji:p.isPhoto?"🛍️":(p.emoji||"🛍️"), category:p.category||"Others", stock:String(p.stock), photo:p.isPhoto?p.photo:null });
+                    setShowAddProduct(true);
+                  }} style={{background:"#F3F4F6",border:"1px solid #E5E7EB",borderRadius:7,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#374151",fontSize:12,fontWeight:500,whiteSpace:"nowrap"}}>
+                    <Icon name="edit" size={12} color="#374151" /> Edit
+                  </button>
                   {/* add stock button */}
                   <button onClick={()=>{setStockModal({id:p.id,name:p.name,emoji:p.emoji,stock:p.stock});setStockAddVal("");}}
                     style={{background:PURPLE_LIGHT,color:PURPLE,border:`1px solid ${PURPLE}44`,borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
@@ -3460,8 +3476,8 @@ export default function KFCanteen() {
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
               <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
                 <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Grocery Item</div>
-                  <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
+                  <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>{editProductId?"Edit Grocery Item":"Add Grocery Item"}</div>
+                  <button onClick={()=>{setShowAddProduct(false);setEditProductId(null);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
                     style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                 </div>
                 <div style={{padding:"22px",display:"flex",flexDirection:"column",gap:14}}>
@@ -3526,7 +3542,7 @@ export default function KFCanteen() {
                       <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Category</label>
                       <select value={newProduct.category} onChange={e=>setNewProduct(p=>({...p,category:e.target.value}))}
                         style={{width:"100%",fontSize:13,padding:"10px 8px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",outline:"none"}}>
-                        {["Chips","Biscuit","Instant Noodles","Instant Coffee","Powdered Drinks","Soft Drinks","Others"].map(c=><option key={c}>{c}</option>)}
+                        {["Chips","Biscuit","Instant Noodles","Instant Coffee","Powdered Drinks","Cold Drinks","Others"].map(c=><option key={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
@@ -3548,16 +3564,16 @@ export default function KFCanteen() {
                     </div>
                   )}
                   <div>
-                    <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>Initial Stock</label>
+                    <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:6}}>{editProductId?"Stock":"Initial Stock"}</label>
                     <input value={newProduct.stock} onChange={e=>setNewProduct(p=>({...p,stock:e.target.value}))} placeholder="0" type="number" min="0"
                       style={{width:"100%",fontSize:14,padding:"10px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",background:"#fff",color:"#111",boxSizing:"border-box",outline:"none"}} />
                   </div>
                   <div style={{display:"flex",gap:10,marginTop:4}}>
-                    <button onClick={()=>{setShowAddProduct(false);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
+                    <button onClick={()=>{setShowAddProduct(false);setEditProductId(null);setNewProduct({name:"",buyPrice:"",price:"",emoji:"🛍️",category:"Others",stock:"",photo:null});setProductNameSuggestions([]); }}
                       style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
                     <button onClick={addOtherProduct} disabled={!newProduct.name||!newProduct.price||!newProduct.stock}
                       style={{flex:2,background:newProduct.name&&newProduct.price&&newProduct.stock?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:newProduct.name&&newProduct.price&&newProduct.stock?"pointer":"not-allowed",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                      <Icon name="plus" size={15} color="#fff" /> Add Product
+                      <Icon name="plus" size={15} color="#fff" /> {editProductId?"Save Changes":"Add Product"}
                     </button>
                   </div>
                 </div>
