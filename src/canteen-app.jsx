@@ -3549,7 +3549,7 @@ export default function KFCanteen() {
             <Empty msg="No orders found" sub="Try a different name, order ID, or plant — or check &quot;Show all records&quot; if you're filtering by date." />
           ) : (
             <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <table style={{width:"100%",minWidth:920,borderCollapse:"collapse",fontSize:13}}>
                 <thead>
                   <tr style={{background:"#F9FAFB"}}>
                     {["Order ID","Customer","Plant","Items","Total","Time","Status","Action"].map(h=>(
@@ -3611,12 +3611,14 @@ export default function KFCanteen() {
                           : !order.paymentType
                             ? <div style={{display:"flex",gap:6}}>
                                 <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
-                                  style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                                  💰 Collect
+                                  title="Collect Payment"
+                                  style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                  💰
                                 </button>
                                 <button onClick={()=>openEditOrder(order)}
-                                  style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                                  ✏️ Edit
+                                  title="Edit Order"
+                                  style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                  ✏️
                                 </button>
                               </div>
                             : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
