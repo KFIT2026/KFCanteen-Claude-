@@ -2256,8 +2256,9 @@ export default function KFCanteen() {
           </button>
         )}
 
-        {/* Brand */}
-        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+        {/* Brand -- click to jump to this role's default (first) tab */}
+        <div onClick={()=>{setActiveTab(navItems[0].id);setSidebarOpen(false);}}
+          style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,cursor:"pointer"}}>
           <Icon name="utensils" size={18} color={PURPLE} />
           <span style={{fontWeight:700,fontSize:15,color:PURPLE,letterSpacing:"-0.3px"}}>KFCanteen</span>
           {currentUser.plant&&(
