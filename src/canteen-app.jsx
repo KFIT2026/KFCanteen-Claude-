@@ -3548,12 +3548,12 @@ export default function KFCanteen() {
           {filteredOrders.length===0 ? (
             <Empty msg="No orders found" sub="Try a different name, order ID, or plant — or check &quot;Show all records&quot; if you're filtering by date." />
           ) : (
-            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
               <table style={{width:"100%",minWidth:920,borderCollapse:"collapse",fontSize:13}}>
                 <thead>
                   <tr style={{background:"#F9FAFB"}}>
                     {["Order ID","Customer","Plant","Items","Total","Time","Status","Action"].map(h=>(
-                      <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
+                      <th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB",zIndex:1}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -3572,18 +3572,18 @@ export default function KFCanteen() {
                     return parseOrderTimestamp(b) - parseOrderTimestamp(a);
                   }).map(order=>(
                     <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer",opacity:order.status==="cancelled"?0.55:1}}>
-                      <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
-                      <td style={{padding:"11px 14px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>
+                      <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
+                      <td style={{padding:"9px 10px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>
                         {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
                         {order.source==="otc"&&<div style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🧾 OTC</div>}
                         {order.source==="short-order"&&<div style={{fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🍽️ Short Order</div>}
                         {order.source==="visitor-menu"&&<div style={{fontSize:10,background:"#DBEAFE",color:"#1E40AF",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🙋 Visitor Menu</div>}
                         {order.status==="cancelled"&&<div style={{fontSize:10,background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🚫 Cancelled{order.cancelledAt?" "+new Date(order.cancelledAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})+" "+new Date(order.cancelledAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""}</div>}
                       </td>
-                      <td style={{padding:"11px 14px"}}>
+                      <td style={{padding:"9px 10px"}}>
                         {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
                       </td>
-                      <td style={{padding:"11px 14px",color:"#6B7280",minWidth:180}}>
+                      <td style={{padding:"9px 10px",color:"#6B7280",minWidth:180}}>
                         {order.items.map((it,i)=>(
                           <div key={i} style={{fontSize:12,lineHeight:1.7,whiteSpace:"nowrap"}}>
                             {it.name} ×{it.qty}
@@ -3593,9 +3593,9 @@ export default function KFCanteen() {
                           </div>
                         ))}
                       </td>
-                      <td style={{padding:"11px 14px",fontWeight:700,color:PURPLE,whiteSpace:"nowrap"}}>₱{order.total}</td>
-                      <td style={{padding:"11px 14px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
-                      <td style={{padding:"11px 14px"}}>
+                      <td style={{padding:"9px 10px",fontWeight:700,color:PURPLE,whiteSpace:"nowrap"}}>₱{order.total}</td>
+                      <td style={{padding:"9px 10px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
+                      <td style={{padding:"9px 10px"}}>
                         {order.status==="cancelled"
                           ? <span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>🚫 Cancelled</span>
                           : order.paymentType
@@ -3605,7 +3605,7 @@ export default function KFCanteen() {
                             : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
                         }
                       </td>
-                      <td style={{padding:"11px 14px"}} onClick={e=>e.stopPropagation()}>
+                      <td style={{padding:"9px 10px"}} onClick={e=>e.stopPropagation()}>
                         {order.status==="cancelled"
                           ? <span style={{fontSize:11,color:"#991B1B",whiteSpace:"nowrap"}}>🚫 Cancelled</span>
                           : !order.paymentType
@@ -4450,12 +4450,12 @@ export default function KFCanteen() {
           </div>
 
           {/* table */}
-          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
                   {["Employee","ID No.","Plant","Orders","Cash","Credit","Pending","Total Spent"].map(h=>(
-                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
+                    <th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB",zIndex:1}}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -4463,19 +4463,19 @@ export default function KFCanteen() {
                 {rows.length===0&&<tr><td colSpan={8} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No employees found.</td></tr>}
                 {rows.map(r=>(
                   <tr key={r.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>{r.avatar}</div>
                         <span style={{fontWeight:600,color:"#111",fontSize:13}}>{r.name}</span>
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,whiteSpace:"nowrap"}}>{r.idNumber||"—"}</td>
-                    <td style={{padding:"12px 14px"}}><span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20,whiteSpace:"nowrap"}}>{r.plant||"—"}</span></td>
-                    <td style={{padding:"12px 14px",color:"#374151",fontWeight:600}}>{r.orderCount}</td>
-                    <td style={{padding:"12px 14px",color:"#059669",fontWeight:600,whiteSpace:"nowrap"}}>₱{r.cash.toLocaleString()}</td>
-                    <td style={{padding:"12px 14px",color:PURPLE,fontWeight:600,whiteSpace:"nowrap"}}>₱{r.credit.toLocaleString()}</td>
-                    <td style={{padding:"12px 14px",color:r.pending>0?"#F59E0B":"#9CA3AF",fontWeight:600,whiteSpace:"nowrap"}}>₱{r.pending.toLocaleString()}</td>
-                    <td style={{padding:"12px 14px",color:"#111",fontWeight:700,whiteSpace:"nowrap"}}>₱{r.total.toLocaleString()}</td>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:12,whiteSpace:"nowrap"}}>{r.idNumber||"—"}</td>
+                    <td style={{padding:"9px 10px"}}><span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20,whiteSpace:"nowrap"}}>{r.plant||"—"}</span></td>
+                    <td style={{padding:"9px 10px",color:"#374151",fontWeight:600}}>{r.orderCount}</td>
+                    <td style={{padding:"9px 10px",color:"#059669",fontWeight:600,whiteSpace:"nowrap"}}>₱{r.cash.toLocaleString()}</td>
+                    <td style={{padding:"9px 10px",color:PURPLE,fontWeight:600,whiteSpace:"nowrap"}}>₱{r.credit.toLocaleString()}</td>
+                    <td style={{padding:"9px 10px",color:r.pending>0?"#F59E0B":"#9CA3AF",fontWeight:600,whiteSpace:"nowrap"}}>₱{r.pending.toLocaleString()}</td>
+                    <td style={{padding:"9px 10px",color:"#111",fontWeight:700,whiteSpace:"nowrap"}}>₱{r.total.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -5140,7 +5140,7 @@ export default function KFCanteen() {
             </div>
           )}
 
-          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
@@ -5159,7 +5159,7 @@ export default function KFCanteen() {
                   {(personnelTab==="unregistered"
                     ? (isAdminLike?["ID No.","Name","Department","Company","Plant","Reg. Code","Status","Action"]:["ID No.","Name","Department","Company","Plant","Reg. Code","Status"])
                     : (isAdminLike?["ID No.","Name","Role","Credit Limit","Balance","Actions","Company","Plant","Department","Phone","Username"]:["ID No.","Name","Role","Credit Limit","Balance","Company","Plant","Department","Phone","Username"])
-                  ).map(h=>(<th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>))}
+                  ).map(h=>(<th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB",zIndex:1}}>{h}</th>))}
                 </tr>
               </thead>
               <tbody>
@@ -5167,7 +5167,7 @@ export default function KFCanteen() {
                 {personnelTab==="unregistered" ? filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                     {isAdminLike&&(
-                      <td style={{padding:"12px 14px"}}>
+                      <td style={{padding:"9px 10px"}}>
                         <input type="checkbox" checked={selectedUnregisteredIds.includes(u.id)}
                           onChange={e=>{
                             if(e.target.checked) setSelectedUnregisteredIds(prev=>[...prev,u.id]);
@@ -5176,8 +5176,8 @@ export default function KFCanteen() {
                           style={{width:15,height:15,cursor:"pointer"}} />
                       </td>
                     )}
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600}}>{u.idNumber||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600}}>{u.idNumber||"—"}</td>
+                    <td style={{padding:"9px 10px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:"#FEE2E2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#EF4444",flexShrink:0}}>{u.avatar}</div>
                         <div style={{flex:1,minWidth:0}}>
@@ -5192,9 +5192,9 @@ export default function KFCanteen() {
                         )}
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
+                    <td style={{padding:"9px 10px"}}>
                       {isAdminLike&&editPlantId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
@@ -5215,10 +5215,10 @@ export default function KFCanteen() {
                         </div>
                       )}
                     </td>
-                    <td style={{padding:"12px 14px",color:"#374151",fontFamily:"monospace",fontSize:13,fontWeight:700,letterSpacing:"0.5px",whiteSpace:"nowrap"}}>{u.regCode||"—"}</td>
-                    <td style={{padding:"12px 14px"}}><span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>Pending Registration</span></td>
+                    <td style={{padding:"9px 10px",color:"#374151",fontFamily:"monospace",fontSize:13,fontWeight:700,letterSpacing:"0.5px",whiteSpace:"nowrap"}}>{u.regCode||"—"}</td>
+                    <td style={{padding:"9px 10px"}}><span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:20}}>Pending Registration</span></td>
                     {isAdminLike&&(
-                      <td style={{padding:"12px 14px"}}>
+                      <td style={{padding:"9px 10px"}}>
                         <button onClick={()=>{if(!window.confirm(`Remove ${u.name} from the employee list?`))return;setUsers(prev=>prev.filter(uu=>uu.id!==u.id));dbDeleteUser(u.id);setSelectedUnregisteredIds(prev=>prev.filter(id=>id!==u.id));}} style={{background:"#FEE2E2",border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,color:"#991B1B",fontSize:12,fontWeight:500}}>
                           <Icon name="trash" size={13} color="#991B1B" /> Remove
                         </button>
@@ -5228,7 +5228,7 @@ export default function KFCanteen() {
                 )) : filteredUsers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
                     {isAdminLike&&(
-                      <td style={{padding:"12px 14px"}}>
+                      <td style={{padding:"9px 10px"}}>
                         <input type="checkbox" checked={selectedRegisteredIds.includes(u.id)}
                           onChange={e=>{
                             if(e.target.checked) setSelectedRegisteredIds(prev=>[...prev,u.id]);
@@ -5237,8 +5237,8 @@ export default function KFCanteen() {
                           style={{width:15,height:15,cursor:"pointer"}} />
                       </td>
                     )}
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{u.idNumber||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{u.idNumber||"—"}</td>
+                    <td style={{padding:"9px 10px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>{u.avatar}</div>
                         <div style={{flex:1,minWidth:0}}>
@@ -5253,7 +5253,7 @@ export default function KFCanteen() {
                         )}
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px"}}>
                       {isAdminLike&&editRoleId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <select defaultValue={u.role} onChange={e=>{ const newRole=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,role:newRole}:uu)); dbUpdateUser(u.id,{role:newRole}); setEditRoleId(null); }}
@@ -5280,7 +5280,7 @@ export default function KFCanteen() {
                         </div>
                       )}
                     </td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px"}}>
                       {isAdminLike&&editCreditId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
@@ -5293,14 +5293,14 @@ export default function KFCanteen() {
                         <span style={{fontWeight:600,color:"#374151"}}>₱{(u.creditLimit||0).toLocaleString()}</span>
                       )}
                     </td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px"}}>
                       <span style={{fontWeight:700,color:u.creditBalance<100?"#EF4444":u.creditBalance<500?"#F59E0B":"#059669"}}>
                         ₱{(u.creditBalance||0).toLocaleString()}
                       </span>
                       {u.creditBalance<100&&<span style={{display:"block",fontSize:10,color:"#EF4444",fontWeight:600}}>⚠️ Low</span>}
                     </td>
                     {isAdminLike&&(
-                      <td style={{padding:"12px 14px"}}>
+                      <td style={{padding:"9px 10px"}}>
                         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                           <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
                             style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
@@ -5317,8 +5317,8 @@ export default function KFCanteen() {
                         </div>
                       </td>
                     )}
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.company||"—"}</td>
+                    <td style={{padding:"9px 10px"}}>
                       {isAdminLike&&editPlantId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <select defaultValue={u.plant||""} onChange={e=>{ const newPlant=e.target.value; setUsers(prev=>prev.map(uu=>uu.id===u.id?{...uu,plant:newPlant}:uu)); dbUpdateUser(u.id,{plant:newPlant}); setEditPlantId(null); }}
@@ -5339,9 +5339,9 @@ export default function KFCanteen() {
                         </div>
                       )}
                     </td>
-                    <td style={{padding:"12px 14px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
+                    <td style={{padding:"9px 10px",color:"#374151",fontSize:12,whiteSpace:"nowrap"}}>{u.department||"—"}</td>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -5488,12 +5488,12 @@ export default function KFCanteen() {
             </div>
           </div>
 
-          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{background:"#F9FAFB"}}>
                   {(isAdminLike?["Name","Email","Phone","Username","Credit Limit","Balance","Actions"]:["Name","Email","Phone","Username","Credit Limit","Balance"]).map(h=>(
-                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
+                    <th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB",zIndex:1}}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -5501,16 +5501,16 @@ export default function KFCanteen() {
                 {filteredCustomers.length===0&&<tr><td colSpan={isAdminLike?7:6} style={{padding:"2rem",textAlign:"center",color:"#9CA3AF"}}>No outside customers found.</td></tr>}
                 {filteredCustomers.map(u=>(
                   <tr key={u.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:32,height:32,borderRadius:"50%",background:"#E0F2FE",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#0369A1",flexShrink:0}}>{u.avatar}</div>
                         <span style={{fontWeight:600,color:"#111",fontSize:13}}>{u.name}</span>
                       </div>
                     </td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.email||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
-                    <td style={{padding:"12px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.email||"—"}</td>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontSize:12,whiteSpace:"nowrap"}}>{u.phone||"—"}</td>
+                    <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:12}}>{u.username||"—"}</td>
+                    <td style={{padding:"9px 10px"}}>
                       {isAdminLike&&editCreditId===u.id ? (
                         <div style={{display:"flex",gap:5,alignItems:"center"}}>
                           <input value={editCreditVal} onChange={e=>setEditCreditVal(e.target.value)} type="number" min="0"
@@ -5523,13 +5523,13 @@ export default function KFCanteen() {
                         <span style={{fontWeight:600,color:"#374151"}}>₱{(u.creditLimit||0).toLocaleString()}</span>
                       )}
                     </td>
-                    <td style={{padding:"12px 14px"}}>
+                    <td style={{padding:"9px 10px"}}>
                       <span style={{fontWeight:700,color:u.creditBalance<100?"#EF4444":u.creditBalance<500?"#F59E0B":"#059669"}}>
                         ₱{(u.creditBalance||0).toLocaleString()}
                       </span>
                     </td>
                     {isAdminLike&&(
-                      <td style={{padding:"12px 14px"}}>
+                      <td style={{padding:"9px 10px"}}>
                         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                           <button onClick={()=>{setEditCreditId(u.id);setEditCreditVal(String(u.creditLimit||0));}}
                             style={{background:PURPLE_LIGHT,color:PURPLE,border:"none",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
@@ -5750,38 +5750,38 @@ export default function KFCanteen() {
                     <div style={{fontSize:13,color:"#9CA3AF"}}>No results for "{historySearch}"</div>
                   </div>
                 ) : (
-                  <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+                  <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
                         <tr style={{background:"#F9FAFB"}}>
                           {["Order ID","Customer","Plant","Items","Total","Payment","Time"].map(h=>(
-                            <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
+                            <th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB",zIndex:1}}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {dayOrders.map(order=>(
                           <tr key={order.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                            <td style={{padding:"11px 14px",color:"#6B7280",fontFamily:"monospace",fontSize:11}}>{order.id}</td>
-                            <td style={{padding:"11px 14px",fontWeight:600,color:"#111"}}>
+                            <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:11}}>{order.id}</td>
+                            <td style={{padding:"9px 10px",fontWeight:600,color:"#111"}}>
                               {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
                               {order.source==="otc"&&<div style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🧾 OTC</div>}
                               {order.source==="short-order"&&<div style={{fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🍽️ Short Order</div>}
                               {order.source==="visitor-menu"&&<div style={{fontSize:10,background:"#DBEAFE",color:"#1E40AF",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🙋 Visitor Menu</div>}
                             </td>
-                            <td style={{padding:"11px 14px"}}>
+                            <td style={{padding:"9px 10px"}}>
                               {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
                             </td>
-                            <td style={{padding:"11px 14px",color:"#6B7280"}}>{order.items.map((it,i)=>(<div key={i} style={{fontSize:12,lineHeight:1.7}}>{it.name} ×{it.qty}</div>))}</td>
-                            <td style={{padding:"11px 14px",fontWeight:700,color:"#059669"}}>₱{order.total}</td>
-                            <td style={{padding:"11px 14px"}}>
+                            <td style={{padding:"9px 10px",color:"#6B7280"}}>{order.items.map((it,i)=>(<div key={i} style={{fontSize:12,lineHeight:1.7}}>{it.name} ×{it.qty}</div>))}</td>
+                            <td style={{padding:"9px 10px",fontWeight:700,color:"#059669"}}>₱{order.total}</td>
+                            <td style={{padding:"9px 10px"}}>
                               {order.paymentType
                                 ?<span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10}}>
                                   {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
                                 </span>
                                 :<span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10}}>⏳ Unpaid</span>}
                             </td>
-                            <td style={{padding:"11px 14px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
+                            <td style={{padding:"9px 10px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -5790,7 +5790,7 @@ export default function KFCanteen() {
                           <td colSpan={4} style={{padding:"11px 14px",fontWeight:700,color:"#374151",fontSize:13}}>
                             {hs ? "Filtered Total (incl. unpaid)" : "Daily Total (incl. unpaid)"}
                           </td>
-                          <td style={{padding:"11px 14px",fontWeight:800,color:PURPLE,fontSize:15}}>₱{dayTotal}</td>
+                          <td style={{padding:"9px 10px",fontWeight:800,color:PURPLE,fontSize:15}}>₱{dayTotal}</td>
                           <td colSpan={2} style={{padding:"11px 14px",fontSize:12,color:"#6B7280"}}>
                             💵 Cash: ₱{cashTotal} &nbsp;|&nbsp; 💳 Credit: ₱{creditTotal} &nbsp;|&nbsp; ⏳ Pending: ₱{pendingTotal}
                           </td>
@@ -5865,12 +5865,12 @@ export default function KFCanteen() {
               </div>
 
               {/* inventory log table */}
-              <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto"}}>
+              <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                   <thead>
                     <tr style={{background:"#F9FAFB"}}>
                       {["Product","Type","Qty","Before","After","By","Date & Time"].map(h=>(
-                        <th key={h} style={{padding:"11px 14px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap"}}>{h}</th>
+                        <th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:600,color:"#6B7280",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #E5E7EB",whiteSpace:"nowrap",position:"sticky",top:0,background:"#F9FAFB",zIndex:1}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -5878,13 +5878,13 @@ export default function KFCanteen() {
                     {inventoryLog.length===0&&<tr><td colSpan={7} style={{padding:"3rem",textAlign:"center",color:"#9CA3AF"}}>No inventory logs yet.</td></tr>}
                     {inventoryLog.map(log=>(
                       <tr key={log.id} style={{borderBottom:"1px solid #F3F4F6"}}>
-                        <td style={{padding:"11px 14px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:20}}>{log.emoji}</span><span style={{fontWeight:600,color:"#111"}}>{log.product}</span></div></td>
-                        <td style={{padding:"11px 14px"}}><span style={{background:log.type==="IN"?"#D1FAE5":"#FEE2E2",color:log.type==="IN"?"#065F46":"#991B1B",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{log.type==="IN"?"📥 IN":"📤 OUT"}</span></td>
-                        <td style={{padding:"11px 14px",fontWeight:700,color:log.type==="IN"?"#059669":"#EF4444"}}>{log.type==="IN"?"+":"-"}{log.qty}</td>
-                        <td style={{padding:"11px 14px",color:"#6B7280"}}>{log.before}</td>
-                        <td style={{padding:"11px 14px",fontWeight:600,color:"#111"}}>{log.after}</td>
-                        <td style={{padding:"11px 14px",color:"#6B7280",fontSize:12}}>{log.by}</td>
-                        <td style={{padding:"11px 14px",color:"#9CA3AF",fontSize:12,whiteSpace:"nowrap"}}>{log.time}</td>
+                        <td style={{padding:"9px 10px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:20}}>{log.emoji}</span><span style={{fontWeight:600,color:"#111"}}>{log.product}</span></div></td>
+                        <td style={{padding:"9px 10px"}}><span style={{background:log.type==="IN"?"#D1FAE5":"#FEE2E2",color:log.type==="IN"?"#065F46":"#991B1B",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{log.type==="IN"?"📥 IN":"📤 OUT"}</span></td>
+                        <td style={{padding:"9px 10px",fontWeight:700,color:log.type==="IN"?"#059669":"#EF4444"}}>{log.type==="IN"?"+":"-"}{log.qty}</td>
+                        <td style={{padding:"9px 10px",color:"#6B7280"}}>{log.before}</td>
+                        <td style={{padding:"9px 10px",fontWeight:600,color:"#111"}}>{log.after}</td>
+                        <td style={{padding:"9px 10px",color:"#6B7280",fontSize:12}}>{log.by}</td>
+                        <td style={{padding:"9px 10px",color:"#9CA3AF",fontSize:12,whiteSpace:"nowrap"}}>{log.time}</td>
                       </tr>
                     ))}
                   </tbody>
