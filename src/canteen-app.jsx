@@ -175,8 +175,8 @@ const compressImageFile = (file, maxDim=800, quality=0.7) => new Promise((resolv
    logo sits directly above its own name/address, centered as one unit,
    with the MIS logo as the middle block between them. */
 const FOOTER_HEIGHT = 178;
-const Footer = ({offsetLeft=0}) => (
-  <footer style={{background:"#fff",borderTop:"1px solid #E5E7EB",flexShrink:0,height:FOOTER_HEIGHT,overflow:"hidden",display:"flex",alignItems:"center",marginLeft:offsetLeft,transition:"margin-left 0.25s"}}>
+const Footer = () => (
+  <footer style={{background:"#fff",borderTop:"1px solid #E5E7EB",flexShrink:0,height:FOOTER_HEIGHT,overflow:"hidden",display:"flex",alignItems:"center"}}>
     <div style={{maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"0 1.5rem"}}>
       <div style={{display:"flex",justifyContent:"center",alignItems:"start",gap:0,flexWrap:"wrap"}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
@@ -2247,126 +2247,14 @@ export default function KFCanteen() {
 
   /* ════════════════════════════════════════
      TOP NAVBAR
+     Sidebar and top bar are real flex siblings of the main content column
+     (assembled directly in the app shell below) instead of independently
+     `position:fixed`/`marginLeft`-offset pieces that had to agree on a
+     hardcoded 240px by convention -- that mismatch is what caused the
+     blank top-left corner and the content column hugging the left instead
+     of centering in the space actually left over next to the sidebar.
   ════════════════════════════════════════ */
   const navItems = NAV[role]||NAV.user;
-
-  const Navbar = () => (
-    <>
-      {/* ── Top Bar ── */}
-      <div style={{background:"#fff",borderBottom:"1px solid #E5E7EB",display:"flex",alignItems:"center",padding:"0 1rem",position:"sticky",top:0,zIndex:50,height:52,flexShrink:0,marginLeft:isDesktop?240:0,transition:"margin-left 0.25s"}}>
-        {/* Hamburger — mobile/tablet only, sidebar is persistent on desktop */}
-        {!isDesktop&&(
-          <button onClick={()=>setSidebarOpen(p=>!p)}
-            style={{background:"none",border:"none",cursor:"pointer",padding:"6px 8px",marginRight:10,borderRadius:8,display:"flex",flexDirection:"column",gap:4,flexShrink:0}}
-            aria-label="Toggle menu">
-            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
-            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
-            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
-          </button>
-        )}
-
-        {/* Brand -- click to jump to this role's default (first) tab */}
-        <div onClick={()=>{setActiveTab(navItems[0].id);setSidebarOpen(false);}}
-          style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,cursor:"pointer"}}>
-          <Icon name="utensils" size={18} color={PURPLE} />
-          <span style={{fontWeight:700,fontSize:15,color:PURPLE,letterSpacing:"-0.3px"}}>KFCanteen</span>
-          {currentUser.plant&&(
-            <span style={{display:"flex",alignItems:"center",gap:4,background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>
-              📍 {currentUser.plant}
-            </span>
-          )}
-        </div>
-
-        {/* Spacer */}
-        <div style={{flex:1}} />
-
-        {/* Right side */}
-        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-          {/* Cart button for users and admin */}
-          {(role==="user"||isAdminLike)&&(
-            <button onClick={()=>{setActiveTab("cart");setSidebarOpen(false);}}
-              style={{background:activeTab==="cart"?PURPLE:PURPLE_LIGHT,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:activeTab==="cart"?"#fff":PURPLE,fontSize:13,display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-              <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
-              {cartCount>0&&<span style={{background:activeTab==="cart"?"#fff":PURPLE,color:activeTab==="cart"?PURPLE:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
-            </button>
-          )}
-          {/* Credit balance */}
-          {currentUser.creditBalance!=null&&(
-            <div style={{display:"flex",alignItems:"center",gap:5,background:currentUser.creditBalance<100?"#FEE2E2":PURPLE_LIGHT,borderRadius:20,padding:"4px 10px",border:`1px solid ${currentUser.creditBalance<100?"#FECACA":"#DDD6FE"}`}}>
-              <span style={{fontSize:11,fontWeight:700,color:currentUser.creditBalance<100?"#EF4444":PURPLE}}>
-                💳 ₱{currentUser.creditBalance?.toLocaleString()}
-              </span>
-            </div>
-          )}
-          {/* Avatar */}
-          <div style={{width:30,height:30,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>
-            {currentUser.avatar}
-          </div>
-          {/* Logout */}
-          <button onClick={handleLogout} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"5px 8px",borderRadius:8,flexShrink:0}}>
-            <Icon name="logout" size={14} color="#9CA3AF" />
-            <span style={{display:"none"}} className="md-show">Logout</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Sidebar overlay (mobile/tablet only — desktop sidebar is persistent, no overlay needed) ── */}
-      {sidebarOpen&&!isDesktop&&(
-        <div onClick={()=>setSidebarOpen(false)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:98,top:52}} />
-      )}
-
-      {/* ── Sidebar — persistent on desktop (≥1024px), off-canvas overlay below that ── */}
-      <div style={{
-        position:"fixed",top:52,left:0,bottom:0,width:240,
-        background:"#fff",borderRight:"1px solid #E5E7EB",
-        zIndex:99,transform:(sidebarOpen||isDesktop)?"translateX(0)":"translateX(-100%)",
-        transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",
-        display:"flex",flexDirection:"column",overflowY:"auto",
-        boxShadow:(sidebarOpen&&!isDesktop)?"4px 0 20px rgba(0,0,0,0.08)":"none",
-      }}>
-        {/* User info header */}
-        <div style={{padding:"16px",borderBottom:"1px solid #F3F4F6",background:PURPLE_LIGHT}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:38,height:38,borderRadius:"50%",background:PURPLE,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>
-              {currentUser.avatar}
-            </div>
-            <div style={{minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
-              <div style={{fontSize:11,color:PURPLE,fontWeight:600,textTransform:"capitalize"}}>{role==="user"?"Customer":role==="staff-admin"?"Staff-Admin":role==="staff"?"Staff":role==="superadmin"?"Superadmin":"Admin"}</div>
-              {currentUser.company&&<div style={{fontSize:10,color:"#6B7280",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.company}</div>}
-            </div>
-          </div>
-        </div>
-
-        {/* Nav items */}
-        <div style={{flex:1,padding:"8px 0"}}>
-          {navItems.map(n=>{
-            const isActive = activeTab===n.id;
-            return (
-              <button key={n.id}
-                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderShowAllDates(true); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",border:"none",background:isActive?PURPLE_LIGHT:"transparent",cursor:"pointer",textAlign:"left",borderLeft:`3px solid ${isActive?PURPLE:"transparent"}`,transition:"all 0.1s"}}>
-                <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
-                <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
-                {n.id==="cart"&&cartCount>0&&<span style={{marginLeft:"auto",background:PURPLE,color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
-                {n.id==="suggestions"&&canModerateSuggestions&&suggestionsAwaitingAdmin>0&&<span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{suggestionsAwaitingAdmin}</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Logout at bottom */}
-        <div style={{padding:"12px 8px",borderTop:"1px solid #F3F4F6"}}>
-          <button onClick={handleLogout}
-            style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"10px 16px",border:"none",background:"#FEF2F2",cursor:"pointer",borderRadius:8,color:"#EF4444"}}>
-            <Icon name="logout" size={17} color="#EF4444" />
-            <span style={{fontSize:14,fontWeight:600}}>Sign Out</span>
-          </button>
-        </div>
-      </div>
-    </>
-  );
 
   /* ════════════════════════════════════════
      HERO BANNER
@@ -6215,11 +6103,132 @@ export default function KFCanteen() {
      MAIN APP SHELL
   ════════════════════════════════════════ */
   return (
-    <div style={{minHeight:600,background:BG,fontFamily:"'Inter',system-ui,sans-serif"}}>
-      <Navbar />
+    <div style={{minHeight:"100vh",background:BG,fontFamily:"'Inter',system-ui,sans-serif",display:"flex"}}>
+      {/* ── Sidebar overlay (mobile/tablet only — desktop sidebar is a persistent flex sibling, no overlay needed) ── */}
+      {sidebarOpen&&!isDesktop&&(
+        <div onClick={()=>setSidebarOpen(false)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:98,top:52}} />
+      )}
+
+      {/* ── Sidebar — real flex sibling on desktop (sticky, always visible, spans full height),
+           off-canvas overlay below a fixed hamburger on mobile/tablet ── */}
+      <div style={isDesktop ? {
+          position:"sticky",top:0,height:"100vh",width:240,flexShrink:0,
+          background:"#fff",borderRight:"1px solid #E5E7EB",
+          display:"flex",flexDirection:"column",overflowY:"auto",
+        } : {
+          position:"fixed",top:52,left:0,bottom:0,width:240,
+          background:"#fff",borderRight:"1px solid #E5E7EB",
+          zIndex:99,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",
+          transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",
+          display:"flex",flexDirection:"column",overflowY:"auto",
+          boxShadow:sidebarOpen?"4px 0 20px rgba(0,0,0,0.08)":"none",
+        }}>
+        {/* User info header */}
+        <div style={{padding:"16px",borderBottom:"1px solid #F3F4F6",background:PURPLE_LIGHT}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:38,height:38,borderRadius:"50%",background:PURPLE,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>
+              {currentUser.avatar}
+            </div>
+            <div style={{minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
+              <div style={{fontSize:11,color:PURPLE,fontWeight:600,textTransform:"capitalize"}}>{role==="user"?"Customer":role==="staff-admin"?"Staff-Admin":role==="staff"?"Staff":role==="superadmin"?"Superadmin":"Admin"}</div>
+              {currentUser.company&&<div style={{fontSize:10,color:"#6B7280",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.company}</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Nav items */}
+        <div style={{flex:1,padding:"8px 0"}}>
+          {navItems.map(n=>{
+            const isActive = activeTab===n.id;
+            return (
+              <button key={n.id}
+                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderShowAllDates(true); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",border:"none",background:isActive?PURPLE_LIGHT:"transparent",cursor:"pointer",textAlign:"left",borderLeft:`3px solid ${isActive?PURPLE:"transparent"}`,transition:"all 0.1s"}}>
+                <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
+                <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
+                {n.id==="cart"&&cartCount>0&&<span style={{marginLeft:"auto",background:PURPLE,color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
+                {n.id==="suggestions"&&canModerateSuggestions&&suggestionsAwaitingAdmin>0&&<span style={{marginLeft:"auto",background:"#EF4444",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{suggestionsAwaitingAdmin}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Logout at bottom */}
+        <div style={{padding:"12px 8px",borderTop:"1px solid #F3F4F6"}}>
+          <button onClick={handleLogout}
+            style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"10px 16px",border:"none",background:"#FEF2F2",cursor:"pointer",borderRadius:8,color:"#EF4444"}}>
+            <Icon name="logout" size={17} color="#EF4444" />
+            <span style={{fontSize:14,fontWeight:600}}>Sign Out</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Right column: top bar + page content + footer, gets exactly the
+           width left over next to the sidebar since it's a real flex:1
+           sibling instead of a marginLeft-offset block ── */}
+      <div style={{flex:1,minWidth:0}}>
+      {/* ── Top Bar ── */}
+      <div style={{background:"#fff",borderBottom:"1px solid #E5E7EB",display:"flex",alignItems:"center",padding:"0 1rem",position:"sticky",top:0,zIndex:50,height:52,flexShrink:0}}>
+        {/* Hamburger — mobile/tablet only, sidebar is persistent on desktop */}
+        {!isDesktop&&(
+          <button onClick={()=>setSidebarOpen(p=>!p)}
+            style={{background:"none",border:"none",cursor:"pointer",padding:"6px 8px",marginRight:10,borderRadius:8,display:"flex",flexDirection:"column",gap:4,flexShrink:0}}
+            aria-label="Toggle menu">
+            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
+            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
+            <span style={{display:"block",width:20,height:2,background:sidebarOpen?PURPLE:"#374151",borderRadius:2,transition:"all 0.2s"}} />
+          </button>
+        )}
+
+        {/* Brand -- click to jump to this role's default (first) tab */}
+        <div onClick={()=>{setActiveTab(navItems[0].id);setSidebarOpen(false);}}
+          style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,cursor:"pointer"}}>
+          <Icon name="utensils" size={18} color={PURPLE} />
+          <span style={{fontWeight:700,fontSize:15,color:PURPLE,letterSpacing:"-0.3px"}}>KFCanteen</span>
+          {currentUser.plant&&(
+            <span style={{display:"flex",alignItems:"center",gap:4,background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>
+              📍 {currentUser.plant}
+            </span>
+          )}
+        </div>
+
+        {/* Spacer */}
+        <div style={{flex:1}} />
+
+        {/* Right side */}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {/* Cart button for users and admin */}
+          {(role==="user"||isAdminLike)&&(
+            <button onClick={()=>{setActiveTab("cart");setSidebarOpen(false);}}
+              style={{background:activeTab==="cart"?PURPLE:PURPLE_LIGHT,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:activeTab==="cart"?"#fff":PURPLE,fontSize:13,display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+              <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
+              {cartCount>0&&<span style={{background:activeTab==="cart"?"#fff":PURPLE,color:activeTab==="cart"?PURPLE:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
+            </button>
+          )}
+          {/* Credit balance */}
+          {currentUser.creditBalance!=null&&(
+            <div style={{display:"flex",alignItems:"center",gap:5,background:currentUser.creditBalance<100?"#FEE2E2":PURPLE_LIGHT,borderRadius:20,padding:"4px 10px",border:`1px solid ${currentUser.creditBalance<100?"#FECACA":"#DDD6FE"}`}}>
+              <span style={{fontSize:11,fontWeight:700,color:currentUser.creditBalance<100?"#EF4444":PURPLE}}>
+                💳 ₱{currentUser.creditBalance?.toLocaleString()}
+              </span>
+            </div>
+          )}
+          {/* Avatar */}
+          <div style={{width:30,height:30,borderRadius:"50%",background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:PURPLE,flexShrink:0}}>
+            {currentUser.avatar}
+          </div>
+          {/* Logout */}
+          <button onClick={handleLogout} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6B7280",padding:"5px 8px",borderRadius:8,flexShrink:0}}>
+            <Icon name="logout" size={14} color="#9CA3AF" />
+            <span style={{display:"none"}} className="md-show">Logout</span>
+          </button>
+        </div>
+      </div>
       {/* low credit warning banner */}
       {creditNotif&&currentUser.creditBalance<100&&(
-        <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"10px 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,position:"sticky",top:52,zIndex:40,marginLeft:isDesktop?240:0,transition:"margin-left 0.25s"}}>
+        <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"10px 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,position:"sticky",top:52,zIndex:40}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:18}}>⚠️</span>
             <div>
@@ -6231,7 +6240,7 @@ export default function KFCanteen() {
         </div>
       )}
       {/* Main content */}
-      <div style={{padding:"1.25rem",maxWidth:1100,margin:"0 auto",marginLeft:isDesktop?240:undefined,transition:"margin-left 0.25s"}}>
+      <div style={{padding:"1.25rem",maxWidth:1100,margin:"0 auto"}}>
         {renderTab()}
       </div>
       {/* Remarks + drink-upsell prompt — lives at the top level so it can be
@@ -6504,7 +6513,8 @@ export default function KFCanteen() {
             : "Order placed successfully!"}
         </div>
       )}
-      <Footer offsetLeft={isDesktop?240:0} />
+      <Footer />
+      </div>
     </div>
   );
 }
