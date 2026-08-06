@@ -1305,6 +1305,9 @@ export default function KFCanteen() {
     if(!otcCart.length||!otcCustomer) return;
     const plant = currentUser.plant||"KF Main";
     const isEmployee = otcType==="employee";
+    // OTC has no separate "collect payment" step -- the register sale IS
+    // the collection, so encodedBy/now doubles as collectedBy/collectedAt
+    // for the "Collected by [name] on [date]" note shown in order history.
     const order = {
       id: nextOrderId(),
       user: otcCustomer.name,
@@ -1318,6 +1321,8 @@ export default function KFCanteen() {
       source: "otc",
       encodedBy: currentUser.name,
       guestType: isEmployee ? null : otcType,
+      collectedBy: currentUser.name,
+      collectedAt: new Date().toISOString(),
     };
     setOrders(prev=>[order,...prev]);
     dbInsertOrder(order);
@@ -1386,9 +1391,11 @@ export default function KFCanteen() {
   const confirmPayment = (orderId, paymentType) => {
     const order = orders.find(o=>o.id===orderId);
     if(!order) return;
-    // mark served + save payment type
-    setOrders(prev=>prev.map(o=>o.id===orderId?{...o,paymentType}:o));
-    dbUpdateOrder(orderId, { paymentType });
+    // mark served + save payment type + who collected it and when, so My
+    // Orders/Manage Orders can show "Collected by [name] on [date]".
+    const collectedBy = currentUser.name, collectedAt = new Date().toISOString();
+    setOrders(prev=>prev.map(o=>o.id===orderId?{...o,paymentType,collectedBy,collectedAt}:o));
+    dbUpdateOrder(orderId, { paymentType, collectedBy, collectedAt });
     // if credit, deduct from user's credit balance -- match by the order's
     // stable userId, not by name. order.user is a frozen name snapshot from
     // when the order was placed, so matching on it breaks silently (no
@@ -2767,6 +2774,11 @@ export default function KFCanteen() {
                 <div style={{borderTop:"1px solid #F3F4F6",marginTop:10,paddingTop:10,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15}}>
                   <span>Total</span><span style={{color:PURPLE}}>₱{order.total}</span>
                 </div>
+                {order.collectedBy&&order.status!=="cancelled"&&(
+                  <div style={{fontSize:11,color:"#6B7280",marginTop:8}}>
+                    ✅ Collected by {order.collectedBy}{order.collectedAt?" on "+new Date(order.collectedAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date(order.collectedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""}
+                  </div>
+                )}
 
                 {order.status==="cancelled" ? (
                   <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F4F6",fontSize:11,color:"#991B1B"}}>
@@ -3088,6 +3100,10 @@ export default function KFCanteen() {
     /* ── MANAGE ORDERS (staff/admin) ── */
     if(activeTab==="mgorders") {
       const filteredOrders = orders.filter(o=>{
+        // Cancelled orders are the employee's own record (My Orders) --
+        // staff don't need to act on them, so they're left out of this
+        // list entirely rather than shown read-only.
+        if(o.status==="cancelled") return false;
         const plantMatch = (role==="staff") ? (o.plant===currentUser.plant)
           : (role==="staff-admin") ? (orderPlantFilter==="All"||o.plant===orderPlantFilter)
           : true;
@@ -3494,7 +3510,7 @@ export default function KFCanteen() {
 
           {/* order count summary - plant filtered for staff */}
           {(()=>{
-            var sO = (role==="staff"||role==="staff-admin") ? orders.filter(o=>o.plant===currentUser.plant) : orders;
+            var sO = orders.filter(o=>o.status!=="cancelled" && ((role==="staff"||role==="staff-admin") ? o.plant===currentUser.plant : true));
             return <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
               <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{sO.length}</span>
@@ -3571,14 +3587,18 @@ export default function KFCanteen() {
                     // into an actual date+time before comparing.
                     return parseOrderTimestamp(b) - parseOrderTimestamp(a);
                   }).map(order=>(
-                    <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer",opacity:order.status==="cancelled"?0.55:1}}>
+                    <tr key={order.id} onClick={()=>setOrderDetailModal(order)} style={{borderBottom:"1px solid #F3F4F6",cursor:"pointer"}}>
                       <td style={{padding:"9px 10px",color:"#6B7280",fontFamily:"monospace",fontSize:11,whiteSpace:"nowrap"}}>{order.id}</td>
                       <td style={{padding:"9px 10px",fontWeight:600,color:"#111",whiteSpace:"nowrap"}}>
                         {order.user}{order.guestType&&<span style={{color:"#9CA3AF",fontWeight:400}}> ({order.guestType==="guard"?"Guard":"Visitor"})</span>}
                         {order.source==="otc"&&<div style={{fontSize:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🧾 OTC</div>}
                         {order.source==="short-order"&&<div style={{fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🍽️ Short Order</div>}
                         {order.source==="visitor-menu"&&<div style={{fontSize:10,background:"#DBEAFE",color:"#1E40AF",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🙋 Visitor Menu</div>}
-                        {order.status==="cancelled"&&<div style={{fontSize:10,background:"#FEE2E2",color:"#991B1B",fontWeight:700,padding:"1px 7px",borderRadius:10,display:"inline-block",marginLeft:6}}>🚫 Cancelled{order.cancelledAt?" "+new Date(order.cancelledAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})+" "+new Date(order.cancelledAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""}</div>}
+                        {order.collectedBy&&(
+                          <div style={{fontSize:10,color:"#9CA3AF",fontWeight:400,marginTop:2,whiteSpace:"normal"}}>
+                            ✅ Collected by {order.collectedBy}{order.collectedAt?" · "+new Date(order.collectedAt).toLocaleDateString("en-PH",{month:"short",day:"numeric"})+" "+new Date(order.collectedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""}
+                          </div>
+                        )}
                       </td>
                       <td style={{padding:"9px 10px"}}>
                         {order.plant&&<span style={{background:PURPLE_LIGHT,color:PURPLE,fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>📍 {order.plant}</span>}
@@ -3596,32 +3616,28 @@ export default function KFCanteen() {
                       <td style={{padding:"9px 10px",fontWeight:700,color:PURPLE,whiteSpace:"nowrap"}}>₱{order.total}</td>
                       <td style={{padding:"9px 10px",color:"#9CA3AF",whiteSpace:"nowrap"}}>{order.time}</td>
                       <td style={{padding:"9px 10px"}}>
-                        {order.status==="cancelled"
-                          ? <span style={{background:"#FEE2E2",color:"#991B1B",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>🚫 Cancelled</span>
-                          : order.paymentType
-                            ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>
-                                {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
-                              </span>
-                            : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
+                        {order.paymentType
+                          ? <span style={{background:order.paymentType==="Credit"?PURPLE_LIGHT:"#D1FAE5",color:order.paymentType==="Credit"?PURPLE:"#065F46",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>
+                              {order.paymentType==="Credit"?"💳 Credit":"💵 Cash"}
+                            </span>
+                          : <span style={{background:"#FEF3C7",color:"#92400E",fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>⏳ Unpaid</span>
                         }
                       </td>
                       <td style={{padding:"9px 10px"}} onClick={e=>e.stopPropagation()}>
-                        {order.status==="cancelled"
-                          ? <span style={{fontSize:11,color:"#991B1B",whiteSpace:"nowrap"}}>🚫 Cancelled</span>
-                          : !order.paymentType
-                            ? <div style={{display:"flex",gap:6}}>
-                                <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
-                                  title="Collect Payment"
-                                  style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                                  💰
-                                </button>
-                                <button onClick={()=>openEditOrder(order)}
-                                  title="Edit Order"
-                                  style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                                  ✏️
-                                </button>
-                              </div>
-                            : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
+                        {!order.paymentType
+                          ? <div style={{display:"flex",gap:6}}>
+                              <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
+                                title="Collect Payment"
+                                style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                💰
+                              </button>
+                              <button onClick={()=>openEditOrder(order)}
+                                title="Edit Order"
+                                style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                ✏️
+                              </button>
+                            </div>
+                          : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
                         }
                       </td>
                     </tr>
