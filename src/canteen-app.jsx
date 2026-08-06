@@ -718,7 +718,6 @@ export default function KFCanteen() {
   const [repurposeChoiceFor, setRepurposeChoiceFor] = useState(null); // menuItemId currently choosing a repurpose target
   const [repurposeDishSearch, setRepurposeDishSearch] = useState("");
   const [repurposeTargetDish, setRepurposeTargetDish] = useState(null);
-  const [rawMaterialsTab, setRawMaterialsTab] = useState("stock"); // "stock" | "waste" | "repurposed"
 
   // receipts
   const [receipts, setReceipts] = useState([]);
@@ -3783,45 +3782,6 @@ export default function KFCanteen() {
             </button>
           </div>
 
-          <div style={{display:"flex",gap:6,marginBottom:16}}>
-            {[{id:"stock",label:"📦 Stock"},{id:"repurposed",label:"🔁 Repurposed Log"},{id:"waste",label:"🗑️ Waste Log"}].map(t=>(
-              <button key={t.id} onClick={()=>setRawMaterialsTab(t.id)}
-                style={{padding:"7px 16px",borderRadius:8,border:"1px solid #E5E7EB",background:rawMaterialsTab===t.id?PURPLE:"#fff",color:rawMaterialsTab===t.id?"#fff":"#6B7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {rawMaterialsTab==="waste" ? (
-            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
-              {excessDecisions.filter(d=>d.decision==="waste").length===0 ? (
-                <Empty msg="No waste logged" sub="Excess dishes marked as waste at canteen close will show up here for accountability." />
-              ) : excessDecisions.filter(d=>d.decision==="waste").map(d=>(
-                <div key={d.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{d.dishName} <span style={{color:"#9CA3AF",fontWeight:400}}>· {d.plant}</span></div>
-                    <div style={{fontSize:11,color:"#9CA3AF"}}>{d.date} · logged by {d.decidedBy}</div>
-                  </div>
-                  <div style={{fontWeight:800,fontSize:14,color:"#991B1B"}}>{formatQtyLong(d.excessQty,d.servingUnit)}</div>
-                </div>
-              ))}
-            </div>
-          ) : rawMaterialsTab==="repurposed" ? (
-            <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden"}}>
-              {excessDecisions.filter(d=>d.decision==="repurpose").length===0 ? (
-                <Empty msg="No repurposed excess logged" sub="Excess dishes marked as repurposed at canteen close will show up here, with where they went." />
-              ) : excessDecisions.filter(d=>d.decision==="repurpose").map(d=>(
-                <div key={d.id} style={{padding:"12px 16px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{d.dishName} <span style={{color:"#9CA3AF",fontWeight:400}}>· {d.plant}</span></div>
-                    <div style={{fontSize:11,color:"#9CA3AF"}}>{d.date} · logged by {d.decidedBy} · → {d.repurposeTargetType==="dish"?d.repurposeTargetName:"Raw Materials"}</div>
-                  </div>
-                  <div style={{fontWeight:800,fontSize:14,color:"#059669"}}>{formatQtyLong(d.excessQty,d.servingUnit)}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-          <>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
             <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
               <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{rawMaterials.length}</span>
@@ -3873,8 +3833,6 @@ export default function KFCanteen() {
             ))}
             {displayedMaterials.length===0&&<Empty msg="No raw materials found" sub="Add ingredients like rice, meat, or vegetables to start tracking recipes." />}
           </div>
-          </>
-          )}
 
           {/* Encode Stock modal -- bulk entry, one shared date for the whole batch */}
           {showAddRawMaterial&&(
