@@ -168,24 +168,34 @@ const compressImageFile = (file, maxDim=800, quality=0.7) => new Promise((resolv
   reader.readAsDataURL(file);
 });
 
-/* ── footer (shown on every page, fixed height so it never shifts between pages) ── */
-const FOOTER_HEIGHT = 156;
+/* ── footer (shown on every page, fixed height so it never shifts between pages) ──
+   Grid is [1fr][auto][1fr]: the two company columns are equal-width, so the
+   MIS logo in the middle "auto" column always sits at the true horizontal
+   center of the footer, not just wherever it happens to fall between the
+   other two logos. Each company's own logo sits directly above its own
+   name/address, centered as one unit, instead of all three logos sharing
+   one row separate from the text below. */
+const FOOTER_HEIGHT = 178;
 const Footer = ({offsetLeft=0}) => (
   <footer style={{background:"#fff",borderTop:"1px solid #E5E7EB",flexShrink:0,height:FOOTER_HEIGHT,overflow:"hidden",display:"flex",alignItems:"center",marginLeft:offsetLeft,transition:"margin-left 0.25s"}}>
     <div style={{maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"0 1.5rem"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:24,flexWrap:"wrap"}}>
-        <img src="/logos/koufu-globe.webp" alt="Kou Fu" style={{height:42,width:"auto"}} />
-        <img src="/logos/koufu-mis.webp" alt="Kou Fu MIS" style={{height:30,width:"auto"}} />
-        <img src="/logos/colortree-mark.png" alt="Colortree" style={{height:34,width:"auto"}} />
-      </div>
-      <div style={{display:"flex",gap:32,flexWrap:"wrap",justifyContent:"center",textAlign:"center"}}>
-        <div style={{maxWidth:280}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:2}}>Kou Fu Color Printing Corporation</div>
-          <div style={{fontSize:11,color:"#9CA3AF",lineHeight:1.4}}>Lots 6-7, Block 3, Phase 2, Mountview Industrial Complex, 4116 Carmona</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"start",width:"100%",gap:20}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+          <div style={{height:48,display:"flex",alignItems:"center"}}>
+            <img src="/logos/koufu-globe.webp" alt="Kou Fu" style={{height:42,width:"auto"}} />
+          </div>
+          <div style={{fontSize:12,fontWeight:700,color:"#374151",textAlign:"center"}}>Kou Fu Color Printing Corporation</div>
+          <div style={{fontSize:11,color:"#9CA3AF",lineHeight:1.4,textAlign:"center",maxWidth:280}}>Lots 6-7, Block 3, Phase 2, Mountview Industrial Complex, 4116 Carmona</div>
         </div>
-        <div style={{maxWidth:280}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:2}}>Colortree Label Corporation</div>
-          <div style={{fontSize:11,color:"#9CA3AF",lineHeight:1.4}}>Lot 3-5, Block 8, Phase 2, Mountview Industrial Complex, Carmona, Cavite</div>
+        <div style={{height:48,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <img src="/logos/koufu-mis.webp" alt="Kou Fu MIS" style={{height:30,width:"auto"}} />
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+          <div style={{height:48,display:"flex",alignItems:"center"}}>
+            <img src="/logos/colortree-mark.png" alt="Colortree" style={{height:34,width:"auto"}} />
+          </div>
+          <div style={{fontSize:12,fontWeight:700,color:"#374151",textAlign:"center"}}>Colortree Label Corporation</div>
+          <div style={{fontSize:11,color:"#9CA3AF",lineHeight:1.4,textAlign:"center",maxWidth:280}}>Lot 3-5, Block 8, Phase 2, Mountview Industrial Complex, Carmona, Cavite</div>
         </div>
       </div>
       <div style={{fontSize:11,color:"#D1D5DB"}}>© 2026 KFCP MIS. All rights reserved.</div>
