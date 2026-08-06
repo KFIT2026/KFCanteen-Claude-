@@ -470,6 +470,68 @@ const AddFixedMenuItemModal = ({ title, newItem, setNewItem, dragOver, setDragOv
   );
 };
 
+/* ── Food card ──
+   Module-level (not defined inside KFCanteen) so it keeps a stable identity
+   across renders -- a component defined inside another component's body
+   gets recreated as a "new" component type on every parent re-render,
+   which makes React tear down and rebuild every card in the grid instead
+   of just updating them, visually looking like the page reloading. */
+const FoodCard = ({item, onAdd, isPastDate, scheduledDate, cutoffPassed, isAdminLike, role}) => {
+  const outOfStock = item.available===false || (item.stock!==undefined && item.stock<=0);
+  const cantOrder = outOfStock || isPastDate || cutoffPassed;
+  return (
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden",display:"flex",flexDirection:"column",transition:"box-shadow 0.15s",opacity:cantOrder?0.7:1}}
+      onMouseEnter={e=>e.currentTarget.style.boxShadow=cantOrder?"none":"0 4px 16px rgba(107,33,168,0.10)"}
+      onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+      <div style={{height:130,background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
+        {item.isPhoto&&(item.img||item.photo)
+          ? <img src={item.img||item.photo} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} />
+          : <span style={{fontSize:54,lineHeight:1}}>{item.img||item.emoji}</span>
+        }
+        {item.cat&&<span style={{position:"absolute",top:8,left:8,background:PURPLE,color:"#fff",fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20,letterSpacing:"0.5px"}}>{item.cat}</span>}
+        {item.stock!==undefined&&<span style={{position:"absolute",top:8,right:8,background:item.stock<=5?"#EF4444":item.stock<=10?"#F59E0B":"#10B981",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>
+          {item.stock<=0?"Out":item.stock+" left"}
+        </span>}
+        {scheduledDate&&<span style={{position:"absolute",bottom:8,right:8,background:"rgba(107,33,168,0.85)",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:8}}>📅 {formatDateLabel(scheduledDate)}</span>}
+      </div>
+      <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:6,flex:1}}>
+        <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
+        {item.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280",background:"#F3F4F6",borderRadius:20,padding:"2px 8px",alignSelf:"flex-start"}}>
+          <span>{unitIcon(item.servingUnit)}</span>
+          <span>{formatServing(item.grams,item.servingUnit)} per serving</span>
+        </div>}
+        {/* buy/sell price — admin & staff only */}
+        {(isAdminLike||role==="staff-admin"||role==="staff") && item.buyPrice!=null ? (
+          <div style={{display:"flex",flexDirection:"column",gap:3}}>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:11,color:"#EF4444",fontWeight:600}}>Buy ₱{item.buyPrice}</span>
+              <span style={{fontSize:10,color:"#D1D5DB"}}>→</span>
+              <span style={{fontSize:11,color:"#059669",fontWeight:600}}>Sell ₱{item.price}</span>
+              <span style={{fontSize:10,color:PURPLE,fontWeight:700,background:PURPLE_LIGHT,borderRadius:10,padding:"1px 6px"}}>+₱{(item.price-item.buyPrice).toFixed(0)}</span>
+            </div>
+            <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>₱{item.price}</div>
+          </div>
+        ) : item.sizes&&item.sizes.length>0 ? (
+          <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>From ₱{Math.min(...item.sizes.map(s=>s.price))}</div>
+        ) : (
+          <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>₱{item.price}</div>
+        )}
+        {isPastDate
+          ? <div style={{textAlign:"center",fontSize:12,color:"#9CA3AF",padding:"7px",background:"#F9FAFB",borderRadius:8,marginTop:"auto",fontWeight:600}}>📅 Past — View Only</div>
+          : cutoffPassed
+          ? <div style={{textAlign:"center",fontSize:12,color:"#92400E",padding:"7px",background:"#FEF3C7",borderRadius:8,marginTop:"auto",fontWeight:600}}>⏰ Cutoff Passed</div>
+          : outOfStock
+          ? <div style={{textAlign:"center",fontSize:12,color:"#9CA3AF",padding:"7px",background:"#F9FAFB",borderRadius:8,marginTop:"auto",fontWeight:600}}>Out of Stock</div>
+          : <button onClick={()=>onAdd(item, scheduledDate)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:"auto"}}>
+              <Icon name="plus" size={14} color="#fff" />
+              {scheduledDate ? `Order for ${formatDateLabel(scheduledDate)}` : "Add to Cart"}
+            </button>
+        }
+      </div>
+    </div>
+  );
+};
+
 export default function KFCanteen() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
@@ -610,6 +672,7 @@ export default function KFCanteen() {
   const [orderDateFilter, setOrderDateFilter] = useState(toDateKey(new Date()));
   const [paymentModal, setPaymentModal] = useState(null);
   const [orderDetailModal, setOrderDetailModal] = useState(null);
+  const [editOrderModal, setEditOrderModal] = useState(null); // {orderId, items, catalogSearch} -- working copy while staff-admin fixes an uncollected order
   const [otherCat, setOtherCat] = useState("All");
   const [filterCat, setFilterCat] = useState("All");
   const [otherProducts, setOtherProducts] = useState([]);
@@ -1214,7 +1277,7 @@ export default function KFCanteen() {
       userId: currentUser.id,
       date: toDateKey(new Date()),
       plant,
-      items: visitorCart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",scheduledDate:null,remarks:c.remarks||null})),
+      items: visitorCart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",scheduledDate:null,remarks:c.remarks||null,productId:c.id||null})),
       total: visitorCartTotal,
       time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
       source: "visitor-menu",
@@ -1248,7 +1311,7 @@ export default function KFCanteen() {
       userId: isEmployee ? otcCustomer.id : null,
       date: otcDate || toDateKey(new Date()),
       plant,
-      items: otcCart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:null})),
+      items: otcCart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:null,productId:c.id||null})),
       total: otcCartTotal,
       time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
       paymentType,
@@ -1385,6 +1448,82 @@ export default function KFCanteen() {
     setOrders(prev=>prev.map(o=>o.id===orderId?{...o,status:"cancelled",cancelledAt}:o));
     dbUpdateOrder(orderId, { status:"cancelled", cancelledAt });
     restockInventoryForItems(order.items);
+  };
+
+  /* ── staff-admin order edit (Manage Orders) ──
+     Lets staff-admin fix an order that's placed but not yet collected --
+     e.g. an item turns out unavailable -- by swapping, removing, or
+     adjusting quantities, for any order source (unlike the employee
+     self-edit above, which is Weekly Menu/Short Order only). Only reaches
+     grocery stock (dishes were never stock-tracked, same as everywhere
+     else); the net qty change per product since the order was placed is
+     applied as one delta so re-editing repeatedly doesn't double-count. */
+  const isOrderStaffEditable = (order) => order && order.status!=="cancelled" && !order.paymentType;
+
+  const applyInventoryDelta = (oldItems, newItems) => {
+    const keyOf = (it) => it.productId || it.name;
+    const deltaByKey = {}; // key -> net qty delta (new - old)
+    const itemByKey = {};
+    oldItems.forEach(it=>{ const k=keyOf(it); deltaByKey[k]=(deltaByKey[k]||0)-it.qty; itemByKey[k]=itemByKey[k]||it; });
+    newItems.forEach(it=>{ const k=keyOf(it); deltaByKey[k]=(deltaByKey[k]||0)+it.qty; itemByKey[k]=itemByKey[k]||it; });
+    setOtherProducts(prev => prev.map(p => {
+      const matchKey = Object.keys(deltaByKey).find(k=>{
+        const it = itemByKey[k];
+        return it.productId ? it.productId===p.id : it.name===p.name;
+      });
+      if(!matchKey) return p;
+      const delta = deltaByKey[matchKey];
+      if(!delta) return p;
+      const newStock = Math.max(0, p.stock - delta);
+      const logEntry = {
+        id:"il"+Date.now()+p.id, product:p.name, emoji:p.emoji,
+        type: delta>0 ? "OUT" : "IN", qty: Math.abs(delta), before:p.stock, after:newStock,
+        by:currentUser.name,
+        time: new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})+" · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+      };
+      setInventoryLog(log=>[logEntry,...log]);
+      dbInsertLog(logEntry);
+      dbUpdateProduct(p.id, { stock:newStock, available:newStock>0 });
+      return {...p, stock:newStock, available:newStock>0};
+    }));
+  };
+
+  const openEditOrder = (order) => {
+    if(!isOrderStaffEditable(order)) return;
+    setEditOrderModal({ orderId: order.id, items: order.items.map(it=>({...it})), catalogSearch:"" });
+  };
+
+  const addItemToEditOrder = (item) => setEditOrderModal(prev=>{
+    if(!prev) return prev;
+    const existingIdx = prev.items.findIndex(it=>(it.productId||it.name)===(item.id||item.name));
+    if(existingIdx>=0){
+      return {...prev, items: prev.items.map((it,i)=>i===existingIdx?{...it,qty:it.qty+1}:it)};
+    }
+    const newItem = {name:item.name, qty:1, price:item.price, grams:item.grams||null, servingUnit:item.servingUnit||"g", productId:item.id||null, buyPrice:item.buyPrice||null, remarks:null, scheduledDate:null, size:null};
+    return {...prev, items:[...prev.items, newItem]};
+  });
+
+  const updateEditOrderItemQty = (idx, delta) => setEditOrderModal(prev=>{
+    if(!prev) return prev;
+    return {...prev, items: prev.items.map((it,i)=>i===idx?{...it,qty:Math.max(0,it.qty+delta)}:it).filter(it=>it.qty>0)};
+  });
+
+  const removeEditOrderItem = (idx) => setEditOrderModal(prev=>{
+    if(!prev) return prev;
+    return {...prev, items: prev.items.filter((_,i)=>i!==idx)};
+  });
+
+  const saveEditOrder = () => {
+    if(!editOrderModal) return;
+    const order = orders.find(o=>o.id===editOrderModal.orderId);
+    if(!order || !isOrderStaffEditable(order)) { setEditOrderModal(null); return; }
+    const newItems = editOrderModal.items.filter(it=>it.qty>0);
+    if(newItems.length===0) return; // an order can't be edited down to zero items -- Cancel it instead
+    const newTotal = newItems.reduce((s,it)=>s+it.price*it.qty,0);
+    applyInventoryDelta(order.items, newItems);
+    setOrders(prev=>prev.map(o=>o.id===order.id?{...o,items:newItems,total:newTotal}:o));
+    dbUpdateOrder(order.id, { items:newItems, total:newTotal });
+    setEditOrderModal(null);
   };
 
   const addOtherProduct = () => {
@@ -2338,62 +2477,6 @@ export default function KFCanteen() {
     </div>
   );
 
-  /* ── Food card ── */
-  const FoodCard = ({item, onAdd, isPastDate, scheduledDate, cutoffPassed}) => {
-    const outOfStock = item.available===false || (item.stock!==undefined && item.stock<=0);
-    const cantOrder = outOfStock || isPastDate || cutoffPassed;
-    return (
-      <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"hidden",display:"flex",flexDirection:"column",transition:"box-shadow 0.15s",opacity:cantOrder?0.7:1}}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow=cantOrder?"none":"0 4px 16px rgba(107,33,168,0.10)"}
-        onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-        <div style={{height:130,background:PURPLE_LIGHT,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
-          {item.isPhoto&&(item.img||item.photo)
-            ? <img src={item.img||item.photo} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}} />
-            : <span style={{fontSize:54,lineHeight:1}}>{item.img||item.emoji}</span>
-          }
-          {item.cat&&<span style={{position:"absolute",top:8,left:8,background:PURPLE,color:"#fff",fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20,letterSpacing:"0.5px"}}>{item.cat}</span>}
-          {item.stock!==undefined&&<span style={{position:"absolute",top:8,right:8,background:item.stock<=5?"#EF4444":item.stock<=10?"#F59E0B":"#10B981",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>
-            {item.stock<=0?"Out":item.stock+" left"}
-          </span>}
-          {scheduledDate&&<span style={{position:"absolute",bottom:8,right:8,background:"rgba(107,33,168,0.85)",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:8}}>📅 {formatDateLabel(scheduledDate)}</span>}
-        </div>
-        <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:6,flex:1}}>
-          <div style={{fontWeight:600,fontSize:14,color:"#111"}}>{item.name}</div>
-          {item.grams&&<div style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280",background:"#F3F4F6",borderRadius:20,padding:"2px 8px",alignSelf:"flex-start"}}>
-            <span>{unitIcon(item.servingUnit)}</span>
-            <span>{formatServing(item.grams,item.servingUnit)} per serving</span>
-          </div>}
-          {/* buy/sell price — admin & staff only */}
-          {(isAdminLike||role==="staff-admin"||role==="staff") && item.buyPrice!=null ? (
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <span style={{fontSize:11,color:"#EF4444",fontWeight:600}}>Buy ₱{item.buyPrice}</span>
-                <span style={{fontSize:10,color:"#D1D5DB"}}>→</span>
-                <span style={{fontSize:11,color:"#059669",fontWeight:600}}>Sell ₱{item.price}</span>
-                <span style={{fontSize:10,color:PURPLE,fontWeight:700,background:PURPLE_LIGHT,borderRadius:10,padding:"1px 6px"}}>+₱{(item.price-item.buyPrice).toFixed(0)}</span>
-              </div>
-              <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>₱{item.price}</div>
-            </div>
-          ) : item.sizes&&item.sizes.length>0 ? (
-            <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>From ₱{Math.min(...item.sizes.map(s=>s.price))}</div>
-          ) : (
-            <div style={{color:PURPLE,fontWeight:700,fontSize:16}}>₱{item.price}</div>
-          )}
-          {isPastDate
-            ? <div style={{textAlign:"center",fontSize:12,color:"#9CA3AF",padding:"7px",background:"#F9FAFB",borderRadius:8,marginTop:"auto",fontWeight:600}}>📅 Past — View Only</div>
-            : cutoffPassed
-            ? <div style={{textAlign:"center",fontSize:12,color:"#92400E",padding:"7px",background:"#FEF3C7",borderRadius:8,marginTop:"auto",fontWeight:600}}>⏰ Cutoff Passed</div>
-            : outOfStock
-            ? <div style={{textAlign:"center",fontSize:12,color:"#9CA3AF",padding:"7px",background:"#F9FAFB",borderRadius:8,marginTop:"auto",fontWeight:600}}>Out of Stock</div>
-            : <button onClick={()=>onAdd(item, scheduledDate)} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"9px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:"auto"}}>
-                <Icon name="plus" size={14} color="#fff" />
-                {scheduledDate ? `Order for ${formatDateLabel(scheduledDate)}` : "Add to Cart"}
-              </button>
-          }
-        </div>
-      </div>
-    );
-  };
 
   /* ── Empty state ── */
   const Empty = ({msg="No items found",sub="Try adjusting your filters or search terms."}) => (
@@ -2447,7 +2530,8 @@ export default function KFCanteen() {
                 {visibleItems.map(item=><FoodCard key={item.id} item={item} onAdd={addToCart}
                   isPastDate={isPast(selectedDate)&&!isSameDay(selectedDate,TODAY_DATE)}
                   scheduledDate={isFuture(selectedDate)?selectedDate:null}
-                  cutoffPassed={isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff(item.cat)} />)}
+                  cutoffPassed={isSameDay(selectedDate,TODAY_DATE)&&isPastMenuCutoff(item.cat)}
+                  isAdminLike={isAdminLike} role={role} />)}
               </div>
             )}
           </div>
@@ -2465,7 +2549,7 @@ export default function KFCanteen() {
             </div>
             {visibleOthers.length===0 ? <Empty /> : (
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:14}}>
-                {visibleOthers.map(item=><FoodCard key={item.id} item={item} onAdd={addToCart} />)}
+                {visibleOthers.map(item=><FoodCard key={item.id} item={item} onAdd={addToCart} isAdminLike={isAdminLike} role={role} />)}
               </div>
             )}
           </div>
@@ -2491,7 +2575,7 @@ export default function KFCanteen() {
                   const cartItem = size ? {...item, price:size.price} : item;
                   addToCart(cartItem, null, {remarks, fixedMenu:true, sizeLabel:size?size.label:null});
                   drinks.forEach(d=>addToCart(d, null, {qty:d.qty, fixedMenu:true}));
-                })} />)}
+                })} isAdminLike={isAdminLike} role={role} />)}
             </div>
           )}
         </div>
@@ -2522,7 +2606,7 @@ export default function KFCanteen() {
                     onAdd={()=>openAddOptions(item, (remarks,drinks)=>{
                       visitorAddItem(item, remarks);
                       drinks.forEach(d=>visitorAddDrink(d, d.qty));
-                    })} />)}
+                    })} isAdminLike={isAdminLike} role={role} />)}
                 </div>
               )}
             </div>
@@ -3234,6 +3318,85 @@ export default function KFCanteen() {
               </div>
             </div>
           )}
+          {/* edit order modal -- staff-admin fixing an uncollected order */}
+          {editOrderModal&&(()=>{
+            const order = orders.find(o=>o.id===editOrderModal.orderId);
+            if(!order) return null;
+            const total = editOrderModal.items.reduce((s,it)=>s+it.price*it.qty,0);
+            const orderDateObj = new Date(order.date+"T00:00:00");
+            const wk = getWeekKey(orderDateObj), dy = getDateKey(orderDateObj);
+            const menuDishes = ((menu[wk]&&menu[wk][dy])||[]).filter(i=>i.available);
+            const catalog = [
+              ...menuDishes.map(i=>({...i,_cat:"Weekly Menu"})),
+              ...otherProducts.filter(p=>p.available&&p.stock>0).map(p=>({...p,_cat:"Groceries"})),
+              ...shortOrderItems.filter(i=>i.available!==false).map(i=>({...i,_cat:"Short Order"})),
+              ...visitorMenuItems.filter(i=>i.available!==false).map(i=>({...i,_cat:"Visitor Menu"})),
+            ];
+            const search = editOrderModal.catalogSearch.trim().toLowerCase();
+            const matches = search ? catalog.filter(c=>c.name.toLowerCase().includes(search)).slice(0,8) : [];
+            return (
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}} onClick={()=>setEditOrderModal(null)}>
+                <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:460,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+                  <div style={{background:"#111827",padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>✏️ Edit {order.id}</div>
+                      <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>{order.user} · {order.date}</div>
+                    </div>
+                    <button onClick={()=>setEditOrderModal(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18}}>×</button>
+                  </div>
+                  <div style={{padding:"18px 22px",overflowY:"auto",flex:1}}>
+                    <div style={{fontSize:12,color:"#9CA3AF",marginBottom:10}}>Remove or adjust items that turned out unavailable, or add a replacement below.</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                      {editOrderModal.items.map((it,i)=>(
+                        <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:9,padding:"8px 10px"}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13,color:"#111"}}>{it.name}{it.size&&<span style={{marginLeft:6,fontSize:10,background:PURPLE_LIGHT,color:PURPLE,fontWeight:700,padding:"1px 6px",borderRadius:8}}>{it.size}</span>}</div>
+                            <div style={{fontSize:11,color:"#6B7280"}}>₱{it.price} each</div>
+                          </div>
+                          <button onClick={()=>updateEditOrderItemQty(i,-1)} style={{width:24,height:24,borderRadius:6,border:"1px solid #E5E7EB",background:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>−</button>
+                          <span style={{minWidth:18,textAlign:"center",fontSize:13,fontWeight:700}}>{it.qty}</span>
+                          <button onClick={()=>updateEditOrderItemQty(i,1)} style={{width:24,height:24,borderRadius:6,border:"1px solid #E5E7EB",background:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>+</button>
+                          <span style={{fontWeight:700,fontSize:13,color:PURPLE,minWidth:50,textAlign:"right"}}>₱{it.price*it.qty}</span>
+                          <button onClick={()=>removeEditOrderItem(i)} style={{background:"#FEE2E2",border:"none",borderRadius:6,width:24,height:24,cursor:"pointer",color:"#991B1B",fontSize:13,fontWeight:700}}>✕</button>
+                        </div>
+                      ))}
+                      {editOrderModal.items.length===0&&<div style={{fontSize:12,color:"#9CA3AF",textAlign:"center",padding:"1rem 0"}}>No items left — add a replacement below, or close this and Cancel the order instead.</div>}
+                    </div>
+
+                    <div style={{position:"relative",marginBottom:8}}>
+                      <input value={editOrderModal.catalogSearch} onChange={e=>setEditOrderModal(prev=>({...prev,catalogSearch:e.target.value}))}
+                        placeholder="Search to add a replacement item..."
+                        style={{width:"100%",fontSize:13,padding:"9px 12px",borderRadius:9,border:"1.5px solid #E5E7EB",boxSizing:"border-box",outline:"none"}} />
+                      {matches.length>0&&(
+                        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid #E5E7EB",borderRadius:9,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",maxHeight:220,overflowY:"auto",zIndex:10}}>
+                          {matches.map(m=>(
+                            <button key={m._cat+m.id} onClick={()=>{addItemToEditOrder(m);setEditOrderModal(prev=>({...prev,catalogSearch:""}));}}
+                              style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,textAlign:"left",padding:"8px 12px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #F3F4F6"}}>
+                              <span style={{fontSize:13,color:"#111"}}>{m.name} <span style={{fontSize:10,color:"#9CA3AF"}}>· {m._cat}</span></span>
+                              <span style={{fontSize:12,fontWeight:700,color:PURPLE,whiteSpace:"nowrap"}}>₱{m.price}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{padding:"16px 22px",borderTop:"1px solid #F3F4F6",flexShrink:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <span style={{fontWeight:700,fontSize:14,color:"#111"}}>New Total</span>
+                      <span style={{fontWeight:800,fontSize:19,color:PURPLE}}>₱{total}</span>
+                    </div>
+                    <div style={{display:"flex",gap:10}}>
+                      <button onClick={()=>setEditOrderModal(null)} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
+                      <button onClick={saveEditOrder} disabled={editOrderModal.items.length===0}
+                        style={{flex:2,background:editOrderModal.items.length===0?"#C4B5FD":PURPLE,color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:editOrderModal.items.length===0?"not-allowed":"pointer",fontSize:14,fontWeight:700}}>
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {/* payment modal */}
           {/* Plant selection modal */}
       {/* payment modal */}
@@ -3446,10 +3609,16 @@ export default function KFCanteen() {
                         {order.status==="cancelled"
                           ? <span style={{fontSize:11,color:"#991B1B",whiteSpace:"nowrap"}}>🚫 Cancelled</span>
                           : !order.paymentType
-                            ? <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
-                                style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                                💰 Collect
-                              </button>
+                            ? <div style={{display:"flex",gap:6}}>
+                                <button onClick={()=>setPaymentModal({orderId:order.id,orderTotal:order.total,userName:order.user,userId:order.userId})}
+                                  style={{background:PURPLE,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                                  💰 Collect
+                                </button>
+                                <button onClick={()=>openEditOrder(order)}
+                                  style={{background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                                  ✏️ Edit
+                                </button>
+                              </div>
                             : <span style={{fontSize:11,color:"#9CA3AF",whiteSpace:"nowrap"}}>✅ Paid</span>
                         }
                       </td>

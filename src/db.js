@@ -310,6 +310,8 @@ export const dbUpdateOrder = async (id, patch) => {
   if ("plant" in patch) dbPatch.plant = patch.plant;
   if ("status" in patch) dbPatch.status = patch.status;
   if ("cancelledAt" in patch) dbPatch.cancelled_at = patch.cancelledAt;
+  if ("items" in patch) dbPatch.items = patch.items;
+  if ("total" in patch) dbPatch.total = patch.total;
   const { error } = await supabase.from("orders").update(dbPatch).eq("id", id);
   if (error) console.error("dbUpdateOrder failed:", error);
 };
