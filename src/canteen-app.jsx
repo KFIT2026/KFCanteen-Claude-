@@ -2803,8 +2803,8 @@ export default function KFCanteen() {
         {/* ── ADD ITEM MODAL ── */}
         {showAddItem===mgDay&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-            <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,0.2)",overflow:"hidden"}}>
-              <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{background:"#fff",borderRadius:18,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+              <div style={{background:PURPLE,padding:"18px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",borderTopLeftRadius:18,borderTopRightRadius:18}}>
                 <div>
                   <div style={{fontWeight:700,fontSize:16,color:"#fff"}}>Add Menu Item</div>
                   <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginTop:2}}>
