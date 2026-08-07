@@ -707,7 +707,9 @@ export default function KFCanteen() {
   // other products category
   const [orderSearch, setOrderSearch] = useState("");
   const [orderPlantFilter, setOrderPlantFilter] = useState("All");
-  const [orderShowAllDates, setOrderShowAllDates] = useState(true);
+  const [orderFilterMode, setOrderFilterMode] = useState("month"); // "month" | "day"
+  const [orderFilterMonth, setOrderFilterMonth] = useState(TODAY_DATE.getMonth());
+  const [orderFilterYear, setOrderFilterYear] = useState(TODAY_DATE.getFullYear());
   const [orderDateFilter, setOrderDateFilter] = useState(toDateKey(new Date()));
   const [paymentModal, setPaymentModal] = useState(null);
   const [orderDetailModal, setOrderDetailModal] = useState(null);
@@ -3119,7 +3121,8 @@ export default function KFCanteen() {
           o.user.toLowerCase().includes(orderSearch.toLowerCase()) ||
           (o.plant||"").toLowerCase().includes(orderSearch.toLowerCase()) ||
           (o.userId && (users.find(u=>u.id===o.userId)||{}).idNumber||"").toLowerCase().includes(orderSearch.toLowerCase());
-        const dateMatch = orderShowAllDates || o.date===orderDateFilter;
+        const monthPrefix = orderFilterYear+"-"+String(orderFilterMonth+1).padStart(2,"0");
+        const dateMatch = orderFilterMode==="month" ? (o.date&&o.date.startsWith(monthPrefix)) : o.date===orderDateFilter;
         return plantMatch && searchMatch && dateMatch;
       });
       return (
@@ -3574,14 +3577,31 @@ export default function KFCanteen() {
             </div>;
           })()}
 
-          {/* Date filter */}
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14,flexWrap:"wrap"}}>
-            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:13,color:"#374151",fontWeight:600}}>
-              <input type="checkbox" checked={orderShowAllDates} onChange={e=>setOrderShowAllDates(e.target.checked)}
-                style={{width:15,height:15,cursor:"pointer"}} />
-              Show all records (ignore date)
-            </label>
-            {!orderShowAllDates&&(
+          {/* Date filter: Month (browse a whole month) vs Day (a single date) --
+              same "Calendar Month / Custom Range" toggle pattern as the
+              Expenses page, for consistency. */}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:4,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:4,width:"fit-content"}}>
+              <button onClick={()=>setOrderFilterMode("month")}
+                style={{padding:"7px 16px",borderRadius:7,border:"none",background:orderFilterMode==="month"?PURPLE:"transparent",color:orderFilterMode==="month"?"#fff":"#6B7280",fontWeight:orderFilterMode==="month"?700:400,fontSize:13,cursor:"pointer"}}>
+                Month
+              </button>
+              <button onClick={()=>setOrderFilterMode("day")}
+                style={{padding:"7px 16px",borderRadius:7,border:"none",background:orderFilterMode==="day"?PURPLE:"transparent",color:orderFilterMode==="day"?"#fff":"#6B7280",fontWeight:orderFilterMode==="day"?700:400,fontSize:13,cursor:"pointer"}}>
+                Day
+              </button>
+            </div>
+            {orderFilterMode==="month" ? (
+              <div style={{display:"flex",alignItems:"center",gap:6,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"6px 6px"}}>
+                <button onClick={()=>{ if(orderFilterMonth===0){setOrderFilterMonth(11);setOrderFilterYear(y=>y-1);} else setOrderFilterMonth(m=>m-1); }}
+                  style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{"<"}</button>
+                <span style={{fontWeight:600,fontSize:14,color:"#374151",minWidth:150,textAlign:"center"}}>
+                  📅 {new Date(orderFilterYear,orderFilterMonth).toLocaleDateString("en-PH",{month:"long",year:"numeric"})}
+                </span>
+                <button onClick={()=>{ if(orderFilterMonth===11){setOrderFilterMonth(0);setOrderFilterYear(y=>y+1);} else setOrderFilterMonth(m=>m+1); }}
+                  style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{">"}</button>
+              </div>
+            ) : (
               <input type="date" value={orderDateFilter} onChange={e=>setOrderDateFilter(e.target.value)}
                 style={{padding:"7px 12px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:13,color:"#111",outline:"none",background:"#fff"}} />
             )}
@@ -3605,7 +3625,7 @@ export default function KFCanteen() {
           )}
 
           {filteredOrders.length===0 ? (
-            <Empty msg="No orders found" sub="Try a different name, order ID, or plant — or check &quot;Show all records&quot; if you're filtering by date." />
+            <Empty msg="No orders found" sub="Try a different name, order ID, or plant — or switch to a different month/day." />
           ) : (
             <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
               <table style={{width:"100%",minWidth:920,borderCollapse:"collapse",fontSize:13}}>
