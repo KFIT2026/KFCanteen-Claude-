@@ -154,7 +154,7 @@ const fixedMenuItemToDb = (m) => ({
   dish_id: m.dishId || null,
 });
 
-const fixedMenuItemFromDb = (r) => ({
+export const fixedMenuItemFromDb = (r) => ({
   id: r.id, name: r.name, price: Number(r.price), available: r.available,
   img: r.img, isPhoto: r.is_photo, cat: r.cat, grams: r.grams==null?null:Number(r.grams),
   servingUnit: r.serving_unit || "g",
@@ -164,7 +164,7 @@ const fixedMenuItemFromDb = (r) => ({
 // Short Order items can optionally have size/price variants (Visitor Menu
 // stays single-price, so it keeps using the shared fixedMenuItem* mapper).
 const shortOrderItemToDb = (m) => ({ ...fixedMenuItemToDb(m), sizes: m.sizes||[] });
-const shortOrderItemFromDb = (r) => ({ ...fixedMenuItemFromDb(r), sizes: r.sizes||[] });
+export const shortOrderItemFromDb = (r) => ({ ...fixedMenuItemFromDb(r), sizes: r.sizes||[] });
 
 export const fetchShortOrderItems = async () => {
   const { data, error } = await supabase.from("short_order_items").select("*");
@@ -238,7 +238,7 @@ const productToDb = (p) => ({
   available: p.available,
 });
 
-const productFromDb = (r) => ({
+export const productFromDb = (r) => ({
   id: r.id, name: r.name, category: r.category, buyPrice: Number(r.buy_price),
   price: Number(r.price), emoji: r.emoji, photo: r.photo, isPhoto: r.is_photo,
   stock: r.stock, available: r.available,
@@ -288,7 +288,7 @@ const orderToDb = (o) => ({
   collected_at: o.collectedAt || null,
 });
 
-const orderFromDb = (r) => ({
+export const orderFromDb = (r) => ({
   id: r.id, userId: r.user_id, user: r.user_name, date: r.date, plant: r.plant,
   items: r.items, total: Number(r.total), paymentType: r.payment_type, time: r.time,
   source: r.source || "app", encodedBy: r.encoded_by, guestType: r.guest_type,
@@ -364,7 +364,7 @@ const receiptToDb = (r) => ({
   uploaded_by: r.by, uploaded_at: r.uploadedAt,
 });
 
-const receiptFromDb = (r) => ({
+export const receiptFromDb = (r) => ({
   id: r.id, photo: r.photo, date: r.date, amount: r.amount==null?null:Number(r.amount),
   note: r.note, source: r.source, sourceName: r.source_name, purchaseType: r.purchase_type,
   by: r.uploaded_by, uploadedAt: r.uploaded_at,

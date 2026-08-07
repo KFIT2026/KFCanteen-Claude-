@@ -16,6 +16,7 @@ import {
   fetchShortOrderItems, dbInsertShortOrderItem, dbUpdateShortOrderItem, dbDeleteShortOrderItem,
   fetchVisitorMenuItems, dbInsertVisitorMenuItem, dbUpdateVisitorMenuItem, dbDeleteVisitorMenuItem,
   fetchAppSettings, dbUpdateAppSetting, fetchAppSettingsLog, dbInsertAppSettingsLog,
+  orderFromDb, receiptFromDb, productFromDb, shortOrderItemFromDb, fixedMenuItemFromDb,
 } from "./db";
 import { supabase } from "./supabaseClient";
 
@@ -168,6 +169,26 @@ const compressImageFile = (file, maxDim=800, quality=0.7) => new Promise((resolv
   };
   reader.readAsDataURL(file);
 });
+
+// Applies a realtime INSERT/UPDATE/DELETE straight to local state instead
+// of refetching the whole table -- Supabase already sends the changed row
+// along with the event, so re-downloading everything (photos included) for
+// every connected client on every single change was the single biggest
+// driver of egress usage. Only used for the tables where this was worth
+// the added complexity (see the realtime subscription below for which);
+// the rest still do a full refetch.
+const applyRowChange = (setState, payload, fromDbMapper, {prepend=false}={}) => {
+  if(payload.eventType==="DELETE"){
+    setState(prev=>prev.filter(r=>r.id!==payload.old.id));
+    return;
+  }
+  const row = fromDbMapper(payload.new);
+  setState(prev=>{
+    const idx = prev.findIndex(r=>r.id===row.id);
+    if(idx===-1) return prepend ? [row, ...prev] : [...prev, row];
+    const next = [...prev]; next[idx] = row; return next;
+  });
+};
 
 /* ── footer (shown on every page, fixed height so it never shifts between pages) ──
    The three blocks are a centered flex row (not stretched to fill the
@@ -832,9 +853,9 @@ export default function KFCanteen() {
       .channel("db-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "users" }, () => fetchUsers().then(rows => { setUsers(rows); setUsersLoading(false); }))
       .on("postgres_changes", { event: "*", schema: "public", table: "menu_items" }, () => fetchMenu().then(setMenu))
-      .on("postgres_changes", { event: "*", schema: "public", table: "other_products" }, () => fetchProducts().then(setOtherProducts))
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => fetchOrders().then(setOrders))
-      .on("postgres_changes", { event: "*", schema: "public", table: "receipts" }, () => fetchReceipts().then(setReceipts))
+      .on("postgres_changes", { event: "*", schema: "public", table: "other_products" }, (payload) => applyRowChange(setOtherProducts, payload, productFromDb))
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, (payload) => applyRowChange(setOrders, payload, orderFromDb, {prepend:true}))
+      .on("postgres_changes", { event: "*", schema: "public", table: "receipts" }, (payload) => applyRowChange(setReceipts, payload, receiptFromDb, {prepend:true}))
       .on("postgres_changes", { event: "*", schema: "public", table: "inventory_log" }, () => fetchInventoryLog().then(setInventoryLog))
       .on("postgres_changes", { event: "*", schema: "public", table: "raw_materials" }, () => fetchRawMaterials().then(setRawMaterials))
       .on("postgres_changes", { event: "*", schema: "public", table: "raw_material_log" }, () => fetchRawMaterialLog().then(setRawMaterialLog))
@@ -844,8 +865,8 @@ export default function KFCanteen() {
       .on("postgres_changes", { event: "*", schema: "public", table: "dish_excess_decisions" }, () => fetchExcessDecisions().then(setExcessDecisions))
       .on("postgres_changes", { event: "*", schema: "public", table: "suggestions" }, () => fetchSuggestions().then(setSuggestions))
       .on("postgres_changes", { event: "*", schema: "public", table: "suggestion_replies" }, () => fetchSuggestionReplies().then(setSuggestionReplies))
-      .on("postgres_changes", { event: "*", schema: "public", table: "short_order_items" }, () => fetchShortOrderItems().then(setShortOrderItems))
-      .on("postgres_changes", { event: "*", schema: "public", table: "visitor_menu_items" }, () => fetchVisitorMenuItems().then(setVisitorMenuItems))
+      .on("postgres_changes", { event: "*", schema: "public", table: "short_order_items" }, (payload) => applyRowChange(setShortOrderItems, payload, shortOrderItemFromDb))
+      .on("postgres_changes", { event: "*", schema: "public", table: "visitor_menu_items" }, (payload) => applyRowChange(setVisitorMenuItems, payload, fixedMenuItemFromDb))
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, () => fetchAppSettings().then(s=>setAppSettings(prev=>({...DEFAULT_APP_SETTINGS, ...s}))))
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings_log" }, () => fetchAppSettingsLog().then(setSettingsLog))
       .subscribe();
@@ -861,9 +882,11 @@ export default function KFCanteen() {
   const handleReceiptPhotoFiles = useCallback((fileList) => {
     Array.from(fileList||[]).forEach(file=>{
       if(!file||!file.type.startsWith("image/")) return;
-      // Larger max dimension + higher quality than product/dish photos --
-      // receipts need to stay legible (prices, item lines) at higher zoom.
-      compressImageFile(file, 1400, 0.8).then(dataUrl=>
+      // Still noticeably higher quality than product/dish photos (800/70)
+      // so receipts stay legible at zoom -- just not as heavy as the
+      // original 1400/80, which was a meaningful chunk of egress usage
+      // given how often receipts get uploaded and how large they were.
+      compressImageFile(file, 1100, 0.75).then(dataUrl=>
         setReceiptPhotos(prev=>[...prev, { tempId:"tmp"+Date.now()+Math.random(), photo:dataUrl, amount:"" }]));
     });
   }, []);

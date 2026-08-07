@@ -41,10 +41,18 @@ const TIMEOUT_RETRY_DELAY_MS = 4000; // extra pause before retrying a timed-out 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // { table, photoColumn, isPhotoColumn, maxDim, quality }
+// isPhotoColumn is null for receipts -- unlike products/menu/dishes (where
+// an emoji is a valid alternative to a photo), every receipt row always has
+// one, so there's no toggle column to check.
 const TARGETS = [
   { table: "other_products", photoColumn: "photo", isPhotoColumn: "is_photo", maxDim: 800, quality: 70 },
   { table: "menu_items",     photoColumn: "img",   isPhotoColumn: "is_photo", maxDim: 800, quality: 70 },
   { table: "dishes",         photoColumn: "img",   isPhotoColumn: "is_photo", maxDim: 800, quality: 70 },
+  // Moderate reduction, not matched all the way down to the others --
+  // receipts need to stay legible (prices, item lines) at higher zoom for
+  // bookkeeping/audit purposes, so this keeps them noticeably sharper than
+  // product/dish photos while still cutting well below the original 1400/80.
+  { table: "receipts",       photoColumn: "photo", isPhotoColumn: null,      maxDim: 1100, quality: 75 },
 ];
 
 async function compressDataUrl(dataUrl, maxDim, quality) {
@@ -91,10 +99,11 @@ async function run() {
     const t = TARGETS[ti];
     if (ti > 0) await sleep(TABLE_DELAY_MS);
 
-    const { data, error } = await selectWithRetry(t.table, `id, ${t.photoColumn}, ${t.isPhotoColumn}`);
+    const cols = t.isPhotoColumn ? `id, ${t.photoColumn}, ${t.isPhotoColumn}` : `id, ${t.photoColumn}`;
+    const { data, error } = await selectWithRetry(t.table, cols);
     if (error) { console.error(`Failed to fetch ${t.table}:`, error.message); continue; }
 
-    const candidates = data.filter(r => r[t.isPhotoColumn] && r[t.photoColumn]);
+    const candidates = data.filter(r => (!t.isPhotoColumn || r[t.isPhotoColumn]) && r[t.photoColumn]);
     console.log(`${t.table}: ${candidates.length} of ${data.length} rows have a photo`);
 
     let tableBefore = 0, tableAfter = 0, tableCount = 0, tableSkipped = 0, tableFailed = 0;
