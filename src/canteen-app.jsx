@@ -4424,6 +4424,15 @@ export default function KFCanteen() {
       const grandPending = rows.reduce((s,r)=>s+r.pending,0);
       const grandTotal = rows.reduce((s,r)=>s+r.total,0);
 
+      // order counts for the same period + search-filtered employee set,
+      // to go alongside the peso totals below (rows only tracks pesos per
+      // employee, not counts broken down by payment type).
+      const rowIds = new Set(rows.map(r=>r.id));
+      const periodRowOrders = periodOrders.filter(o=>rowIds.has(o.userId));
+      const cashOrderCount = periodRowOrders.filter(o=>o.paymentType==="Cash").length;
+      const creditOrderCount = periodRowOrders.filter(o=>o.paymentType==="Credit").length;
+      const pendingOrderCount = periodRowOrders.filter(o=>!o.paymentType).length;
+
       return (
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:12}}>
@@ -4485,19 +4494,53 @@ export default function KFCanteen() {
             </div>
           )}
 
-          {/* summary */}
-          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-            {[
-              {label:"💵 Cash",      value:grandCash,    color:"#059669"},
-              {label:"💳 Credit",    value:grandCredit,  color:PURPLE},
-              {label:"⏳ Pending",   value:grandPending, color:"#F59E0B"},
-              {label:"Total Spent",  value:grandTotal,   color:"#111"},
-            ].map(s=>(
-              <div key={s.label} style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
-                <span style={{fontSize:18,fontWeight:800,color:s.color}}>₱{s.value.toLocaleString()}</span>
-                <span style={{fontSize:11,color:"#6B7280",fontWeight:600,textAlign:"center"}}>{s.label}</span>
+          {/* order count + sales summary -- same "Order Records" / "Sales
+              Records" layout as Manage Orders / Overall History, for
+              consistency. Both respect the current period (month or custom
+              range) and the employee search filter. */}
+          <div style={{display:"flex",gap:24,marginBottom:16,flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Order Records</div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100}}>
+                  <span style={{fontSize:18,fontWeight:800,color:PURPLE}}>{periodRowOrders.length}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Orders</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100}}>
+                  <span style={{fontSize:18,fontWeight:800,color:"#059669"}}>{cashOrderCount}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100}}>
+                  <span style={{fontSize:18,fontWeight:800,color:PURPLE}}>{creditOrderCount}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:100}}>
+                  <span style={{fontSize:18,fontWeight:800,color:"#F59E0B"}}>{pendingOrderCount}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Pending</span>
+                </div>
               </div>
-            ))}
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Sales Records</div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+                  <span style={{fontSize:18,fontWeight:800,color:"#111"}}>₱{grandTotal.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Spent</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+                  <span style={{fontSize:18,fontWeight:800,color:"#059669"}}>₱{grandCash.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+                  <span style={{fontSize:18,fontWeight:800,color:PURPLE}}>₱{grandCredit.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:120}}>
+                  <span style={{fontSize:18,fontWeight:800,color:"#F59E0B"}}>₱{grandPending.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Pending</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* search */}
