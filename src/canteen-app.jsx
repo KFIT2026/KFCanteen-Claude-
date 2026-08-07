@@ -249,6 +249,7 @@ const Icon = ({ name, size=16, color="currentColor" }) => {
     idea: <><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.5.4.8 1 .8 1.7v.6h6.4v-.6c0-.7.3-1.3.8-1.7A7 7 0 0012 2z"/></>,
     register: <><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v3"/><line x1="2" y1="13" x2="22" y2="13"/><line x1="8" y1="17" x2="10" y2="17"/></>,
     settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82V15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,
+    chart: <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"middle",flexShrink:0}}>
@@ -275,6 +276,7 @@ const NAV = {
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
     { id:"expenses",  label:"Expenses",        icon:"expense" },
+    { id:"sales",     label:"Sales",           icon:"chart" },
     { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
     { id:"suggestions",label:"Suggestions",    icon:"idea" },
@@ -292,6 +294,7 @@ const NAV = {
     { id:"dishes",    label:"Manage Dishes",   icon:"utensils" },
     { id:"receipts",  label:"Receipts",        icon:"receipt" },
     { id:"expenses",  label:"Expenses",        icon:"expense" },
+    { id:"sales",     label:"Sales",           icon:"chart" },
     { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
     { id:"suggestions",label:"Suggestions",    icon:"idea" },
@@ -711,6 +714,12 @@ export default function KFCanteen() {
   const [orderFilterMonth, setOrderFilterMonth] = useState(TODAY_DATE.getMonth());
   const [orderFilterYear, setOrderFilterYear] = useState(TODAY_DATE.getFullYear());
   const [orderDateFilter, setOrderDateFilter] = useState(toDateKey(new Date()));
+
+  // sales statistics tab
+  const [salesViewMode, setSalesViewMode] = useState("month"); // "month" (daily bars) | "year" (monthly bars)
+  const [salesMonth, setSalesMonth] = useState(TODAY_DATE.getMonth());
+  const [salesYear, setSalesYear] = useState(TODAY_DATE.getFullYear());
+  const [salesTopBy, setSalesTopBy] = useState("qty"); // "qty" | "revenue"
   const [paymentModal, setPaymentModal] = useState(null);
   const [orderDetailModal, setOrderDetailModal] = useState(null);
   const [editOrderModal, setEditOrderModal] = useState(null); // {orderId, items, catalogSearch} -- working copy while staff-admin fixes an uncollected order
@@ -4407,6 +4416,229 @@ export default function KFCanteen() {
               </div>
             </div>
           )}
+        </div>
+      );
+    }
+
+    /* ── SALES STATISTICS (admin/staff-admin) ── */
+    if(activeTab==="sales") {
+      const periodOrders = orders.filter(o=>{
+        if(o.status==="cancelled"||!o.date) return false;
+        return salesViewMode==="month"
+          ? o.date.startsWith(salesYear+"-"+String(salesMonth+1).padStart(2,"0"))
+          : o.date.startsWith(String(salesYear));
+      });
+      const periodLabel = salesViewMode==="month"
+        ? new Date(salesYear,salesMonth).toLocaleDateString("en-PH",{month:"long",year:"numeric"})
+        : String(salesYear);
+      const grandRevenue = periodOrders.reduce((s,o)=>s+o.total,0);
+      const avgOrderValue = periodOrders.length ? grandRevenue/periodOrders.length : 0;
+
+      // revenue trend: daily bars within a month, or monthly bars within a year
+      const bucketCount = salesViewMode==="month" ? new Date(salesYear,salesMonth+1,0).getDate() : 12;
+      const buckets = Array.from({length:bucketCount},(_,i)=>({
+        label: salesViewMode==="month" ? String(i+1) : new Date(salesYear,i).toLocaleDateString("en-PH",{month:"short"}),
+        cash:0, credit:0, pending:0,
+      }));
+      periodOrders.forEach(o=>{
+        const idx = salesViewMode==="month" ? (parseInt(o.date.slice(8,10),10)-1) : (parseInt(o.date.slice(5,7),10)-1);
+        if(idx<0||idx>=bucketCount) return;
+        const b = buckets[idx];
+        if(o.paymentType==="Cash") b.cash += o.total;
+        else if(o.paymentType==="Credit") b.credit += o.total;
+        else b.pending += o.total;
+      });
+      const maxBucketTotal = Math.max(1, ...buckets.map(b=>b.cash+b.credit+b.pending));
+
+      // top-selling items
+      const itemStats = {};
+      periodOrders.forEach(o=>(o.items||[]).forEach(it=>{
+        if(!itemStats[it.name]) itemStats[it.name] = {name:it.name, qty:0, revenue:0};
+        itemStats[it.name].qty += it.qty||0;
+        itemStats[it.name].revenue += (it.price||0)*(it.qty||0);
+      }));
+      const itemList = Object.values(itemStats)
+        .sort((a,b)=> salesTopBy==="qty" ? b.qty-a.qty : b.revenue-a.revenue)
+        .slice(0,8);
+      const maxItemVal = Math.max(1, ...itemList.map(i=>salesTopBy==="qty"?i.qty:i.revenue));
+
+      // sales by source
+      const sourceStats = [
+        {key:"regular",     label:"Regular Menu",     icon:"🍱", test:o=>!o.source},
+        {key:"short-order", label:"Short Order",      icon:"🍽️", test:o=>o.source==="short-order"},
+        {key:"visitor-menu",label:"Visitor Menu",     icon:"🙋", test:o=>o.source==="visitor-menu"},
+        {key:"otc",         label:"Over the Counter", icon:"🧾", test:o=>o.source==="otc"},
+      ].map(s=>{
+        const os = periodOrders.filter(s.test);
+        return {...s, count:os.length, revenue:os.reduce((sum,o)=>sum+o.total,0)};
+      });
+      const maxSourceRevenue = Math.max(1, ...sourceStats.map(s=>s.revenue));
+
+      // plant comparison
+      const plantStats = PLANTS.map(p=>{
+        const po = periodOrders.filter(o=>o.plant===p);
+        return {plant:p, count:po.length, revenue:po.reduce((s,o)=>s+o.total,0)};
+      });
+      const maxPlantRevenue = Math.max(1, ...plantStats.map(p=>p.revenue));
+
+      return (
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:"0 0 16px",display:"flex",alignItems:"center",gap:10}}>
+            <Icon name="chart" size={20} color={PURPLE} /> Sales Statistics
+          </h2>
+
+          {/* Month/Year toggle + navigator */}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:4,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:4,width:"fit-content"}}>
+              <button onClick={()=>setSalesViewMode("month")}
+                style={{padding:"7px 16px",borderRadius:7,border:"none",background:salesViewMode==="month"?PURPLE:"transparent",color:salesViewMode==="month"?"#fff":"#6B7280",fontWeight:salesViewMode==="month"?700:400,fontSize:13,cursor:"pointer"}}>
+                Month
+              </button>
+              <button onClick={()=>setSalesViewMode("year")}
+                style={{padding:"7px 16px",borderRadius:7,border:"none",background:salesViewMode==="year"?PURPLE:"transparent",color:salesViewMode==="year"?"#fff":"#6B7280",fontWeight:salesViewMode==="year"?700:400,fontSize:13,cursor:"pointer"}}>
+                Year
+              </button>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,background:"#fff",border:"1px solid #E5E7EB",borderRadius:10,padding:"6px 6px"}}>
+              <button onClick={()=>{
+                  if(salesViewMode==="month"){ if(salesMonth===0){setSalesMonth(11);setSalesYear(y=>y-1);} else setSalesMonth(m=>m-1); }
+                  else setSalesYear(y=>y-1);
+                }}
+                style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{"<"}</button>
+              <span style={{fontWeight:600,fontSize:14,color:"#374151",minWidth:130,textAlign:"center"}}>📅 {periodLabel}</span>
+              <button onClick={()=>{
+                  if(salesViewMode==="month"){ if(salesMonth===11){setSalesMonth(0);setSalesYear(y=>y+1);} else setSalesMonth(m=>m+1); }
+                  else setSalesYear(y=>y+1);
+                }}
+                style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{">"}</button>
+            </div>
+          </div>
+
+          {/* period summary */}
+          <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{periodOrders.length}</span>
+              <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Orders</span>
+            </div>
+            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <span style={{fontSize:20,fontWeight:800,color:"#111"}}>₱{grandRevenue.toLocaleString()}</span>
+              <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Revenue</span>
+            </div>
+            <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <span style={{fontSize:20,fontWeight:800,color:"#111"}}>₱{avgOrderValue.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+              <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Avg Order Value</span>
+            </div>
+          </div>
+
+          {/* revenue trend chart */}
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px 20px",marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+              <span style={{fontSize:14,fontWeight:700,color:"#111"}}>Revenue Trend</span>
+              <div style={{display:"flex",gap:12,fontSize:11,color:"#6B7280"}}>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:9,height:9,borderRadius:2,background:"#059669",display:"inline-block"}}/>Cash</span>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:9,height:9,borderRadius:2,background:PURPLE,display:"inline-block"}}/>Credit</span>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:9,height:9,borderRadius:2,background:"#F59E0B",display:"inline-block"}}/>Unpaid</span>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:bucketCount>15?3:8,height:170,overflowX:"auto",padding:"0 2px"}}>
+              {buckets.map((b,i)=>{
+                const total = b.cash+b.credit+b.pending;
+                const scale = 140/maxBucketTotal;
+                return (
+                  <div key={i} title={b.label+": ₱"+total.toLocaleString()}
+                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:bucketCount>15?12:28,flex:bucketCount>15?"0 0 auto":1}}>
+                    <div style={{display:"flex",flexDirection:"column-reverse",width:"100%",borderRadius:"3px 3px 0 0",overflow:"hidden"}}>
+                      {b.cash>0&&<div style={{height:Math.max(1,b.cash*scale),background:"#059669"}} />}
+                      {b.credit>0&&<div style={{height:Math.max(1,b.credit*scale),background:PURPLE}} />}
+                      {b.pending>0&&<div style={{height:Math.max(1,b.pending*scale),background:"#F59E0B"}} />}
+                      {total===0&&<div style={{height:2,background:"#E5E7EB",width:"100%"}} />}
+                    </div>
+                    <span style={{fontSize:9,color:"#9CA3AF",fontWeight:600}}>{b.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:20}}>
+            {/* top-selling items */}
+            <div style={{flex:"1 1 320px",background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px 20px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                <span style={{fontSize:14,fontWeight:700,color:"#111"}}>Top-Selling Items</span>
+                <div style={{display:"flex",gap:4,background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:8,padding:3}}>
+                  <button onClick={()=>setSalesTopBy("qty")}
+                    style={{padding:"4px 10px",borderRadius:6,border:"none",background:salesTopBy==="qty"?PURPLE:"transparent",color:salesTopBy==="qty"?"#fff":"#6B7280",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                    By Qty
+                  </button>
+                  <button onClick={()=>setSalesTopBy("revenue")}
+                    style={{padding:"4px 10px",borderRadius:6,border:"none",background:salesTopBy==="revenue"?PURPLE:"transparent",color:salesTopBy==="revenue"?"#fff":"#6B7280",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                    By ₱
+                  </button>
+                </div>
+              </div>
+              {itemList.length===0 ? <Empty msg="No item sales" sub="No orders in this period yet." /> : (
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {itemList.map((it,i)=>{
+                    const val = salesTopBy==="qty" ? it.qty : it.revenue;
+                    const pct = Math.round((val/maxItemVal)*100);
+                    return (
+                      <div key={it.name}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                          <span style={{color:"#374151",fontWeight:600}}>{i+1}. {it.name}</span>
+                          <span style={{color:"#6B7280",fontWeight:600}}>{salesTopBy==="qty" ? it.qty+" sold" : "₱"+it.revenue.toLocaleString()}</span>
+                        </div>
+                        <div style={{background:"#F3F4F6",borderRadius:5,height:7,overflow:"hidden"}}>
+                          <div style={{width:pct+"%",height:"100%",background:PURPLE,borderRadius:5}} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* sales by source */}
+            <div style={{flex:"1 1 320px",background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px 20px"}}>
+              <span style={{fontSize:14,fontWeight:700,color:"#111",display:"block",marginBottom:12}}>Sales by Source</span>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {sourceStats.map(s=>{
+                  const pct = Math.round((s.revenue/maxSourceRevenue)*100);
+                  return (
+                    <div key={s.key}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                        <span style={{color:"#374151",fontWeight:600}}>{s.icon} {s.label}</span>
+                        <span style={{color:"#6B7280",fontWeight:600}}>{s.count} orders · ₱{s.revenue.toLocaleString()}</span>
+                      </div>
+                      <div style={{background:"#F3F4F6",borderRadius:5,height:7,overflow:"hidden"}}>
+                        <div style={{width:pct+"%",height:"100%",background:PURPLE,borderRadius:5}} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* plant comparison */}
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px 20px"}}>
+            <span style={{fontSize:14,fontWeight:700,color:"#111",display:"block",marginBottom:12}}>Sales by Plant</span>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {plantStats.map(p=>{
+                const pct = Math.round((p.revenue/maxPlantRevenue)*100);
+                return (
+                  <div key={p.plant}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                      <span style={{color:"#374151",fontWeight:600}}>🏭 {p.plant}</span>
+                      <span style={{color:"#6B7280",fontWeight:600}}>{p.count} orders · ₱{p.revenue.toLocaleString()}</span>
+                    </div>
+                    <div style={{background:"#F3F4F6",borderRadius:5,height:7,overflow:"hidden"}}>
+                      <div style={{width:pct+"%",height:"100%",background:"#059669",borderRadius:5}} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       );
     }
