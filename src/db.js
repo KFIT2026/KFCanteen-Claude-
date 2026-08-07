@@ -636,3 +636,32 @@ export const dbDeleteSuggestionReply = async (id) => {
   const { error } = await supabase.from("suggestion_replies").delete().eq("id", id);
   if (error) console.error("dbDeleteSuggestionReply failed:", error);
 };
+
+/* ── app_settings / app_settings_log tables ── */
+
+export const fetchAppSettings = async () => {
+  const { data, error } = await supabase.from("app_settings").select("*");
+  if (error) { console.error("fetchAppSettings failed:", error); return {}; }
+  const map = {};
+  data.forEach(r => { map[r.key] = r.value; });
+  return map;
+};
+
+export const dbUpdateAppSetting = async (key, value, updatedBy) => {
+  const { error } = await supabase.from("app_settings")
+    .upsert({ key, value, updated_by: updatedBy, updated_at: new Date().toISOString() });
+  if (error) console.error("dbUpdateAppSetting failed:", error);
+  return { success: !error, error };
+};
+
+export const fetchAppSettingsLog = async () => {
+  const { data, error } = await supabase.from("app_settings_log").select("*").order("created_at", { ascending: false }).limit(100);
+  if (error) { console.error("fetchAppSettingsLog failed:", error); return []; }
+  return data.map(r => ({ id: r.id, settingKey: r.setting_key, summary: r.summary, changedBy: r.changed_by, createdAt: r.created_at }));
+};
+
+export const dbInsertAppSettingsLog = async (entry) => {
+  const { error } = await supabase.from("app_settings_log")
+    .insert({ id: entry.id, setting_key: entry.settingKey, summary: entry.summary, changed_by: entry.changedBy, created_at: entry.createdAt });
+  if (error) console.error("dbInsertAppSettingsLog failed:", error);
+};

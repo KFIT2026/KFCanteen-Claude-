@@ -15,6 +15,7 @@ import {
   fetchSuggestionReplies, dbInsertSuggestionReply, dbDeleteSuggestionReply,
   fetchShortOrderItems, dbInsertShortOrderItem, dbUpdateShortOrderItem, dbDeleteShortOrderItem,
   fetchVisitorMenuItems, dbInsertVisitorMenuItem, dbUpdateVisitorMenuItem, dbDeleteVisitorMenuItem,
+  fetchAppSettings, dbUpdateAppSetting, fetchAppSettingsLog, dbInsertAppSettingsLog,
 } from "./db";
 import { supabase } from "./supabaseClient";
 
@@ -226,6 +227,7 @@ const Icon = ({ name, size=16, color="currentColor" }) => {
     scale: <><path d="M12 3v18"/><path d="M5 7l-3 7a4 4 0 008 0z"/><path d="M19 7l-3 7a4 4 0 008 0z"/><path d="M3 7h18"/><path d="M9 3h6"/></>,
     idea: <><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.5.4.8 1 .8 1.7v.6h6.4v-.6c0-.7.3-1.3.8-1.7A7 7 0 0012 2z"/></>,
     register: <><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v3"/><line x1="2" y1="13" x2="22" y2="13"/><line x1="8" y1="17" x2="10" y2="17"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82V15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"middle",flexShrink:0}}>
@@ -255,6 +257,7 @@ const NAV = {
     { id:"personnel", label:"Personnel",       icon:"people" },
     { id:"history",   label:"Overall History", icon:"history" },
     { id:"suggestions",label:"Suggestions",    icon:"idea" },
+    { id:"settings",  label:"Settings",        icon:"settings" },
   ],
   "staff-admin": [
     { id:"visitormenu",label:"Visitor Menu",   icon:"register" },
@@ -811,6 +814,16 @@ export default function KFCanteen() {
   const [receipts, setReceipts] = useState([]);
   useEffect(() => { fetchReceipts().then(setReceipts); }, []);
 
+  // admin-configurable settings (menu cutoffs, outside registration, ...)
+  const DEFAULT_APP_SETTINGS = {
+    menu_cutoffs: { BREAKFAST:{enabled:false,time:"09:00"}, LUNCH:{enabled:false,time:"10:30"}, SNACK:{enabled:false,time:"14:00"} },
+    allow_outside_registration: { enabled: true },
+  };
+  const [appSettings, setAppSettings] = useState(DEFAULT_APP_SETTINGS);
+  useEffect(() => { fetchAppSettings().then(s=>setAppSettings(prev=>({...DEFAULT_APP_SETTINGS, ...s}))); }, []);
+  const [settingsLog, setSettingsLog] = useState([]);
+  useEffect(() => { fetchAppSettingsLog().then(setSettingsLog); }, []);
+
   // Realtime sync — whenever any of these tables change (from this session,
   // another admin's session, or a direct DB edit), refetch that table so
   // every open tab reflects it within moments instead of only on reload.
@@ -833,6 +846,8 @@ export default function KFCanteen() {
       .on("postgres_changes", { event: "*", schema: "public", table: "suggestion_replies" }, () => fetchSuggestionReplies().then(setSuggestionReplies))
       .on("postgres_changes", { event: "*", schema: "public", table: "short_order_items" }, () => fetchShortOrderItems().then(setShortOrderItems))
       .on("postgres_changes", { event: "*", schema: "public", table: "visitor_menu_items" }, () => fetchVisitorMenuItems().then(setVisitorMenuItems))
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, () => fetchAppSettings().then(s=>setAppSettings(prev=>({...DEFAULT_APP_SETTINGS, ...s}))))
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings_log" }, () => fetchAppSettingsLog().then(setSettingsLog))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -1742,13 +1757,52 @@ export default function KFCanteen() {
   const isPlantClosed = (plant, date=TODAY_KEY) =>
     plantCloses.find(c=>c.plant===plant&&c.date===date&&!c.reopenedAt) || null;
 
-  // No category has a same-day ordering cutoff -- Breakfast, Lunch, and
-  // Snack are all orderable any time same-day. Same-day dishes can still
-  // roll forward to tomorrow if the plant is closed (Close Canteen), just
-  // never due to time of day. Kept as a function (always false) rather than
-  // deleted outright since plant-closed rollover logic below still checks
-  // it alongside isPlantClosed.
-  const isPastMenuCutoff = () => false;
+  // Driven by the Settings tab's per-category cutoff config (menu_cutoffs).
+  // A category with no cutoff configured, or one that's simply disabled,
+  // is orderable any time same-day -- same as before this was configurable.
+  // Same-day dishes can still roll forward to tomorrow if the plant is
+  // closed (Close Canteen) regardless of this setting.
+  const isPastMenuCutoff = (cat) => {
+    const setting = (appSettings.menu_cutoffs||{})[cat];
+    if(!setting || !setting.enabled) return false;
+    const [h,m] = (setting.time||"00:00").split(":").map(Number);
+    const cutoff = new Date();
+    cutoff.setHours(h, m, 0, 0);
+    return new Date() >= cutoff;
+  };
+
+  const CUTOFF_CATEGORY_LABELS = { BREAKFAST:"Breakfast", LUNCH:"Lunch", SNACK:"Snack" };
+  const formatCutoffTime = (time) => {
+    const [h,m] = (time||"00:00").split(":").map(Number);
+    const d = new Date(); d.setHours(h,m,0,0);
+    return d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+  };
+
+  const updateMenuCutoff = (cat, patch) => {
+    const current = appSettings.menu_cutoffs || {};
+    const before = current[cat] || {enabled:false, time:"09:00"};
+    const next = {...before, ...patch};
+    if(before.enabled===next.enabled && before.time===next.time) return;
+    const newValue = {...current, [cat]: next};
+    setAppSettings(prev=>({...prev, menu_cutoffs:newValue}));
+    dbUpdateAppSetting("menu_cutoffs", newValue, currentUser.name);
+    const summary = `${CUTOFF_CATEGORY_LABELS[cat]||cat} cutoff: ${before.enabled?"enabled ("+formatCutoffTime(before.time)+")":"disabled"} → ${next.enabled?"enabled ("+formatCutoffTime(next.time)+")":"disabled"}`;
+    const logEntry = { id:"asl"+Date.now()+Math.random().toString(36).slice(2), settingKey:"menu_cutoffs", summary, changedBy:currentUser.name, createdAt:new Date().toISOString() };
+    setSettingsLog(prev=>[logEntry, ...prev]);
+    dbInsertAppSettingsLog(logEntry);
+  };
+
+  const updateOutsideRegistration = (enabled) => {
+    const before = appSettings.allow_outside_registration || {enabled:true};
+    if(before.enabled===enabled) return;
+    const newValue = {enabled};
+    setAppSettings(prev=>({...prev, allow_outside_registration:newValue}));
+    dbUpdateAppSetting("allow_outside_registration", newValue, currentUser.name);
+    const summary = `Outside personnel registration: ${before.enabled?"enabled":"disabled"} → ${enabled?"enabled":"disabled"}`;
+    const logEntry = { id:"asl"+Date.now()+Math.random().toString(36).slice(2), settingKey:"allow_outside_registration", summary, changedBy:currentUser.name, createdAt:new Date().toISOString() };
+    setSettingsLog(prev=>[logEntry, ...prev]);
+    dbInsertAppSettingsLog(logEntry);
+  };
 
   // "qty" below means "amount in the dish's own serving_unit" — literal grams
   // for weight-tracked dishes, a plain piece/cup count otherwise.
@@ -2018,7 +2072,6 @@ export default function KFCanteen() {
 
             <p style={{textAlign:"center",marginTop:16,fontSize:13,color:"#9CA3AF"}}>
               Don't have an account? <span onClick={()=>{
-                setShowEmployeeCheck(true);
                 setLoginError("");
                 // Clear any leftover state from a previous registration attempt
                 setRegisterForm({ selectedUserId:"", phone:"", email:"", plant:"", password:"", confirmPassword:"", regCode:"", codeVerified:false });
@@ -2028,6 +2081,12 @@ export default function KFCanteen() {
                 setShowRegisterConfirm(false);
                 setOutsideForm({ name:"", email:"", phone:"", password:"", confirmPassword:"" });
                 setOutsideError("");
+                // Skip the "are you an employee?" question entirely when
+                // outside registration is disabled -- go straight into
+                // employee registration, same as if "Yes" had been tapped.
+                const outsideAllowed = (appSettings.allow_outside_registration||{}).enabled !== false;
+                if(outsideAllowed){ setShowEmployeeCheck(true); }
+                else { setRegisterType("employee"); setShowRegister(true); }
               }} style={{color:PURPLE_MID,fontWeight:600,cursor:"pointer"}}>Create Account</span>
             </p>
           </>
@@ -6120,6 +6179,70 @@ export default function KFCanteen() {
               })}
             </div>
           )}
+        </div>
+      );
+    }
+
+    /* ── SETTINGS (admin/superadmin only) ── */
+    if(activeTab==="settings") {
+      const cutoffs = appSettings.menu_cutoffs || DEFAULT_APP_SETTINGS.menu_cutoffs;
+      const outsideReg = appSettings.allow_outside_registration || DEFAULT_APP_SETTINGS.allow_outside_registration;
+      return (
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:"#111",margin:"0 0 16px",display:"flex",alignItems:"center",gap:10}}>
+            <Icon name="settings" size={20} color={PURPLE} /> Settings
+          </h2>
+
+          {/* Same-day ordering cutoffs */}
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px",marginBottom:20}}>
+            <div style={{fontWeight:700,fontSize:15,color:"#111",marginBottom:4}}>Same-Day Ordering Cutoffs</div>
+            <div style={{fontSize:12,color:"#9CA3AF",marginBottom:16}}>When enabled, that category's dishes can no longer be added for today past the cutoff time — the order rolls to tomorrow instead. Disabled categories stay orderable any time, same as now.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {["BREAKFAST","LUNCH","SNACK"].map(cat=>{
+                const setting = cutoffs[cat]||{enabled:false,time:"09:00"};
+                return (
+                  <div key={cat} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,background:"#F9FAFB",borderRadius:10,padding:"12px 16px",flexWrap:"wrap"}}>
+                    <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                      <input type="checkbox" checked={setting.enabled} onChange={e=>updateMenuCutoff(cat,{enabled:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}} />
+                      <span style={{fontWeight:600,fontSize:14,color:"#111"}}>{CUTOFF_CATEGORY_LABELS[cat]}</span>
+                    </label>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:12,color:"#6B7280"}}>Cutoff time</span>
+                      <input type="time" value={setting.time} disabled={!setting.enabled} onChange={e=>updateMenuCutoff(cat,{time:e.target.value})}
+                        style={{fontSize:13,padding:"6px 10px",borderRadius:7,border:"1px solid #E5E7EB",color:setting.enabled?"#111":"#9CA3AF",background:setting.enabled?"#fff":"#F3F4F6"}} />
+                      {setting.enabled&&<span style={{fontSize:11,background:"#FEF3C7",color:"#92400E",fontWeight:700,padding:"2px 9px",borderRadius:10,whiteSpace:"nowrap"}}>Active — {formatCutoffTime(setting.time)}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Registration */}
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px",marginBottom:20}}>
+            <div style={{fontWeight:700,fontSize:15,color:"#111",marginBottom:4}}>Registration</div>
+            <div style={{fontSize:12,color:"#9CA3AF",marginBottom:16}}>Controls whether new sign-ups are asked "Are you an employee of Kou Fu / Colortree?" before registering.</div>
+            <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",background:"#F9FAFB",borderRadius:10,padding:"12px 16px"}}>
+              <input type="checkbox" checked={outsideReg.enabled} onChange={e=>updateOutsideRegistration(e.target.checked)} style={{width:16,height:16,cursor:"pointer",flexShrink:0}} />
+              <div>
+                <div style={{fontWeight:600,fontSize:14,color:"#111"}}>Allow outside personnel registration</div>
+                <div style={{fontSize:11,color:"#6B7280",marginTop:2}}>{outsideReg.enabled?"New sign-ups are asked if they're an employee first, and can register as a visitor if not.":"New sign-ups skip the question and go straight into employee registration."}</div>
+              </div>
+            </label>
+          </div>
+
+          {/* Change history */}
+          <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",overflow:"auto",maxHeight:"65vh"}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid #F3F4F6",fontWeight:700,fontSize:15,color:"#111",position:"sticky",top:0,background:"#fff"}}>Change History</div>
+            {settingsLog.length===0 ? (
+              <Empty msg="No changes yet" sub="Every settings change will be logged here." />
+            ) : settingsLog.map(l=>(
+              <div key={l.id} style={{padding:"12px 18px",borderBottom:"1px solid #F3F4F6"}}>
+                <div style={{fontSize:13,color:"#111"}}>{l.summary}</div>
+                <div style={{fontSize:11,color:"#9CA3AF",marginTop:3}}>by {l.changedBy} · {new Date(l.createdAt).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})} · {new Date(l.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
