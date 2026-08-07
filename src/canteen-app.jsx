@@ -637,6 +637,9 @@ export default function KFCanteen() {
   useEffect(() => { fetchOrders().then(setOrders); }, []);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [cartToast, setCartToast] = useState(null); // {name, id} — shown briefly whenever addToCart fires
+  const [cartShakeKey, setCartShakeKey] = useState(0); // bumped on every add-to-cart to replay the shake animation
+  const [orderError, setOrderError] = useState(""); // shared error toast for failed order/sale saves
   const [orderRolledOver, setOrderRolledOver] = useState(false);
   const [showPlantModal, setShowPlantModal] = useState(false);
   const [orderPlant, setOrderPlant] = useState("");
@@ -716,6 +719,16 @@ export default function KFCanteen() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  useEffect(() => {
+    if(!cartToast) return;
+    const t = setTimeout(()=>setCartToast(null), 2000);
+    return () => clearTimeout(t);
+  }, [cartToast]);
+  useEffect(() => {
+    if(!orderError) return;
+    const t = setTimeout(()=>setOrderError(""), 4000);
+    return () => clearTimeout(t);
+  }, [orderError]);
   const [historyTab, setHistoryTab] = useState("orders");
   const [salesDate, setSalesDate] = useState(TODAY_DATE);
   const [showSalesCalendar, setShowSalesCalendar] = useState(false);
@@ -1125,24 +1138,28 @@ export default function KFCanteen() {
   };
 
   /* ── CART ── */
-  const addToCart = (item, scheduledDate, extra) => setCart(prev=>{
-    const remarks = extra&&extra.remarks ? extra.remarks : null;
-    const addQty = (extra&&extra.qty) || 1;
-    // Short Order items are "available anytime" (per how they're described
-    // to admins/staff-admin managing them) — like Groceries, they're exempt
-    // from the weekly-menu-only 6 AM cutoff and closed-plant rollover below,
-    // even though they carry a .cat field the same way weekly-menu dishes do.
-    const fixedMenu = !!(extra&&extra.fixedMenu);
-    // items with remarks get their own cart line (unique key) rather than
-    // merging into an existing entry, since different remarks on the same
-    // dish shouldn't be silently combined into one note.
-    const sizeLabel = (extra&&extra.sizeLabel) || null;
-    const key = item.id + (scheduledDate? "_"+scheduledDate.toDateString():"") + (sizeLabel?"_sz"+sizeLabel:"") + (remarks?"_r"+Date.now()+Math.random():"");
-    const ex = !remarks && prev.find(c=>c._key===key);
-    if(ex) return prev.map(c=>c._key===key?{...c,qty:c.qty+addQty}:c);
-    return [...prev,{...item, qty:addQty, buyPrice:item.buyPrice||null, _key:key,
-      scheduledDate: scheduledDate&&isFuture(scheduledDate)?scheduledDate:null, remarks, fixedMenu, sizeLabel }];
-  });
+  const addToCart = (item, scheduledDate, extra) => {
+    setCart(prev=>{
+      const remarks = extra&&extra.remarks ? extra.remarks : null;
+      const addQty = (extra&&extra.qty) || 1;
+      // Short Order items are "available anytime" (per how they're described
+      // to admins/staff-admin managing them) — like Groceries, they're exempt
+      // from the weekly-menu-only 6 AM cutoff and closed-plant rollover below,
+      // even though they carry a .cat field the same way weekly-menu dishes do.
+      const fixedMenu = !!(extra&&extra.fixedMenu);
+      // items with remarks get their own cart line (unique key) rather than
+      // merging into an existing entry, since different remarks on the same
+      // dish shouldn't be silently combined into one note.
+      const sizeLabel = (extra&&extra.sizeLabel) || null;
+      const key = item.id + (scheduledDate? "_"+scheduledDate.toDateString():"") + (sizeLabel?"_sz"+sizeLabel:"") + (remarks?"_r"+Date.now()+Math.random():"");
+      const ex = !remarks && prev.find(c=>c._key===key);
+      if(ex) return prev.map(c=>c._key===key?{...c,qty:c.qty+addQty}:c);
+      return [...prev,{...item, qty:addQty, buyPrice:item.buyPrice||null, _key:key,
+        scheduledDate: scheduledDate&&isFuture(scheduledDate)?scheduledDate:null, remarks, fixedMenu, sizeLabel }];
+    });
+    setCartToast({name:item.name, id:Date.now()+Math.random()});
+    setCartShakeKey(k=>k+1);
+  };
   const updateQty = (key,delta) => setCart(prev=>prev.map(c=>c._key===key?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
   const removeFromCart = (key) => setCart(prev=>prev.filter(c=>c._key!==key));
 
@@ -1219,7 +1236,7 @@ export default function KFCanteen() {
       ? toDateKey(new Date(Date.now()+86400000))
       : toDateKey(new Date());
     const id = await dbNextOrderId();
-    if(!id){ alert("Couldn't place your order — please check your connection and try again."); setPlacingOrder(false); return; }
+    if(!id){ setOrderError("Couldn't place your order — please try again."); setPlacingOrder(false); return; }
     const order={ id, user:currentUser.name, userId:currentUser.id,
       date: orderDate,
       plant: plant,
@@ -1228,7 +1245,7 @@ export default function KFCanteen() {
       placedAt: new Date().toISOString(), status:"active" };
     const { success } = await dbInsertOrder(order);
     setPlacingOrder(false);
-    if(!success){ alert("Couldn't save your order — please try again."); return; }
+    if(!success){ setOrderError("Couldn't save your order — please try again."); return; }
     setOrders(prev=>[order,...prev]);
     deductInventoryForItems(cart);
     setCart([]);
@@ -1278,7 +1295,7 @@ export default function KFCanteen() {
     setPlacingVisitorOrder(true);
     const plant = currentUser.plant||"KF Main";
     const id = await dbNextOrderId();
-    if(!id){ alert("Couldn't place the order — please check your connection and try again."); setPlacingVisitorOrder(false); return; }
+    if(!id){ setOrderError("Couldn't place the order — please try again."); setPlacingVisitorOrder(false); return; }
     const order = {
       id,
       user: currentUser.name,
@@ -1293,7 +1310,7 @@ export default function KFCanteen() {
     };
     const { success } = await dbInsertOrder(order);
     setPlacingVisitorOrder(false);
-    if(!success){ alert("Couldn't save the order — please try again."); return; }
+    if(!success){ setOrderError("Couldn't save the order — please try again."); return; }
     setOrders(prev=>[order,...prev]);
     deductInventoryForItems(visitorCart);
     setVisitorCart([]);
@@ -1317,7 +1334,7 @@ export default function KFCanteen() {
     const plant = currentUser.plant||"KF Main";
     const isEmployee = otcType==="employee";
     const id = await dbNextOrderId();
-    if(!id){ alert("Couldn't complete the sale — please check your connection and try again."); setPlacingOtcSale(false); return; }
+    if(!id){ setOrderError("Couldn't complete the sale — please try again."); setPlacingOtcSale(false); return; }
     // OTC has no separate "collect payment" step -- the register sale IS
     // the collection, so encodedBy/now doubles as collectedBy/collectedAt
     // for the "Collected by [name] on [date]" note shown in order history.
@@ -1339,7 +1356,7 @@ export default function KFCanteen() {
     };
     const { success } = await dbInsertOrder(order);
     setPlacingOtcSale(false);
-    if(!success){ alert("Couldn't save the sale — please try again."); return; }
+    if(!success){ setOrderError("Couldn't save the sale — please try again."); return; }
     setOrders(prev=>[order,...prev]);
     deductInventoryForItems(otcCart);
     if(paymentType==="Credit" && isEmployee){
@@ -6115,6 +6132,7 @@ export default function KFCanteen() {
   ════════════════════════════════════════ */
   return (
     <div style={{minHeight:"100vh",background:BG,fontFamily:"'Inter',system-ui,sans-serif",display:"flex"}}>
+      <style>{"@keyframes cartShake{0%,100%{transform:rotate(0deg)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}"}</style>
       {/* ── Sidebar overlay (mobile/tablet only — desktop sidebar is a persistent flex sibling, no overlay needed) ── */}
       {sidebarOpen&&!isDesktop&&(
         <div onClick={()=>setSidebarOpen(false)}
@@ -6214,8 +6232,10 @@ export default function KFCanteen() {
           {(role==="user"||isAdminLike)&&(
             <button onClick={()=>{setActiveTab("cart");setSidebarOpen(false);}}
               style={{background:activeTab==="cart"?PURPLE:PURPLE_LIGHT,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:activeTab==="cart"?"#fff":PURPLE,fontSize:13,display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-              <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
-              {cartCount>0&&<span style={{background:activeTab==="cart"?"#fff":PURPLE,color:activeTab==="cart"?PURPLE:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
+              <span key={cartShakeKey} style={{display:"inline-flex",alignItems:"center",gap:6,animation:cartShakeKey?"cartShake 0.5s ease":"none"}}>
+                <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
+                {cartCount>0&&<span style={{background:activeTab==="cart"?"#fff":PURPLE,color:activeTab==="cart"?PURPLE:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
+              </span>
             </button>
           )}
           {/* Credit balance */}
@@ -6522,6 +6542,20 @@ export default function KFCanteen() {
           {orderRolledOver
             ? "Order placed — today's dishes are no longer available (closed or past cutoff), so this is scheduled for tomorrow instead."
             : "Order placed successfully!"}
+        </div>
+      )}
+      {/* add-to-cart toast */}
+      {cartToast&&(
+        <div key={cartToast.id} style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#111827",color:"#fff",padding:"10px 20px",borderRadius:12,fontSize:13,fontWeight:600,zIndex:200,display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",maxWidth:320,textAlign:"center"}}>
+          <Icon name="check" size={15} color="#fff" />
+          {cartToast.name} added to cart
+        </div>
+      )}
+      {/* order/sale save-failure toast -- shared by Weekly Menu, Visitor Menu, and OTC */}
+      {orderError&&(
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#DC2626",color:"#fff",padding:"12px 24px",borderRadius:12,fontSize:14,fontWeight:600,zIndex:200,display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 24px rgba(220,38,38,0.35)",maxWidth:360,textAlign:"center"}}>
+          <span style={{fontSize:16}}>⚠️</span>
+          {orderError}
         </div>
       )}
       <Footer />
