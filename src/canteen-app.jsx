@@ -3516,37 +3516,56 @@ export default function KFCanteen() {
             })}
           </div>
 
-          {/* sales summary -- mirrors filteredOrders exactly (same date/search/plant
-              filters as the table below), so it reads as "totals for what you're
-              currently looking at": the selected date, or every record if
-              "Show all records" is checked. */}
+          {/* order count + sales summary -- both mirror filteredOrders exactly
+              (same date/search/plant filters as the table below), so they
+              read as "totals for what you're currently looking at": the
+              selected date, or every record if "Show all records" is checked. */}
           {(()=>{
-            const cashTotal = filteredOrders.filter(o=>o.paymentType==="Cash").reduce((s,o)=>s+o.total,0);
-            const creditTotal = filteredOrders.filter(o=>o.paymentType==="Credit").reduce((s,o)=>s+o.total,0);
-            const unpaidTotal = filteredOrders.filter(o=>!o.paymentType).reduce((s,o)=>s+o.total,0);
+            const cashOrders = filteredOrders.filter(o=>o.paymentType==="Cash");
+            const creditOrders = filteredOrders.filter(o=>o.paymentType==="Credit");
+            const unpaidOrders = filteredOrders.filter(o=>!o.paymentType);
+            const cashTotal = cashOrders.reduce((s,o)=>s+o.total,0);
+            const creditTotal = creditOrders.reduce((s,o)=>s+o.total,0);
+            const unpaidTotal = unpaidOrders.reduce((s,o)=>s+o.total,0);
             const overallTotal = cashTotal + creditTotal + unpaidTotal;
-            return <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-              <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{filteredOrders.length}</span>
-                <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Orders</span>
+            return <>
+              <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{filteredOrders.length}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Orders</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>{cashOrders.length}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{creditOrders.length}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>{unpaidOrders.length}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid</span>
+                </div>
               </div>
-              <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <span style={{fontSize:20,fontWeight:800,color:"#111"}}>₱{overallTotal.toLocaleString()}</span>
-                <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Sales</span>
+              <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:"#111"}}>₱{overallTotal.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Sales</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>₱{cashTotal.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash Sales</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>₱{creditTotal.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit Sales</span>
+                </div>
+                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>₱{unpaidTotal.toLocaleString()}</span>
+                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid Sales</span>
+                </div>
               </div>
-              <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>₱{cashTotal.toLocaleString()}</span>
-                <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash</span>
-              </div>
-              <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>₱{creditTotal.toLocaleString()}</span>
-                <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit</span>
-              </div>
-              <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>₱{unpaidTotal.toLocaleString()}</span>
-                <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid</span>
-              </div>
-            </div>;
+            </>;
           })()}
 
           {/* Date filter */}
