@@ -2605,7 +2605,12 @@ export default function KFCanteen() {
                 <div style={{fontSize:22,fontWeight:800,color:PURPLE}}>₱{cartTotal}</div>
               </div>
               <button onClick={()=>{
-                if(availableColdDrinks.length>0){ setDrinkUpsellQtys({}); setShowDrinkUpsell(true); }
+                // Don't offer a drink they've already added themselves --
+                // any grocery category with "drink" in the name counts
+                // (Cold Drinks or Powdered Drinks), not just the Cold
+                // Drinks the upsell itself offers.
+                const cartHasDrink = cart.some(c=>(c.category||"").toLowerCase().includes("drink"));
+                if(availableColdDrinks.length>0 && !cartHasDrink){ setDrinkUpsellQtys({}); setShowDrinkUpsell(true); }
                 else { setShowPlantModal(true); setOrderPlant(currentUser.plant||"KF Main"); }
               }} style={{background:PURPLE,color:"#fff",border:"none",borderRadius:10,padding:"11px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
                 Place Order
