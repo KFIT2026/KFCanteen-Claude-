@@ -665,7 +665,9 @@ export default function KFCanteen() {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [cartToast, setCartToast] = useState(null); // {name, id} — shown briefly whenever addToCart fires
-  const [cartShakeKey, setCartShakeKey] = useState(0); // bumped on every add-to-cart to replay the shake animation
+  const [cartFlyers, setCartFlyers] = useState([]); // items animating from the clicked Add to Cart button to the header cart icon
+  const [cartAnimPhase, setCartAnimPhase] = useState("idle"); // "idle" | "roll" | "check" — header cart icon's post-landing sequence
+  const cartIconRef = useRef(null);
   const [orderError, setOrderError] = useState(""); // shared error toast for failed order/sale saves
   const [orderRolledOver, setOrderRolledOver] = useState(false);
   const [showPlantModal, setShowPlantModal] = useState(false);
@@ -686,6 +688,7 @@ export default function KFCanteen() {
   const [visitorCart, setVisitorCart] = useState([]);
   const [visitorMenuDone, setVisitorMenuDone] = useState(false);
   const [placingVisitorOrder, setPlacingVisitorOrder] = useState(false);
+  const [visitorGuestType, setVisitorGuestType] = useState("visitor"); // "visitor" | "guard"
   const [visitorMgSearch, setVisitorMgSearch] = useState("");
   const [shortOrderMgSearch, setShortOrderMgSearch] = useState("");
 
@@ -720,6 +723,7 @@ export default function KFCanteen() {
   const [salesMonth, setSalesMonth] = useState(TODAY_DATE.getMonth());
   const [salesYear, setSalesYear] = useState(TODAY_DATE.getFullYear());
   const [salesTopBy, setSalesTopBy] = useState("qty"); // "qty" | "revenue"
+  const [salesPlantFilter, setSalesPlantFilter] = useState("All");
   const [paymentModal, setPaymentModal] = useState(null);
   const [orderDetailModal, setOrderDetailModal] = useState(null);
   const [editOrderModal, setEditOrderModal] = useState(null); // {orderId, items, catalogSearch} -- working copy while staff-admin fixes an uncollected order
@@ -1207,10 +1211,48 @@ export default function KFCanteen() {
         scheduledDate: scheduledDate&&isFuture(scheduledDate)?scheduledDate:null, remarks, fixedMenu, sizeLabel }];
     });
     setCartToast({name:item.name, id:Date.now()+Math.random()});
-    setCartShakeKey(k=>k+1);
+    triggerCartAddAnimation(item);
   };
   const updateQty = (key,delta) => setCart(prev=>prev.map(c=>c._key===key?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
   const removeFromCart = (key) => setCart(prev=>prev.filter(c=>c._key!==key));
+
+  // Add-to-cart feedback: the item flies from whichever button was clicked
+  // to the header cart icon, which then rolls a short distance and briefly
+  // shows a checkmark before settling back. document.activeElement is used
+  // to find the origin button rather than threading the click event through
+  // every addToCart caller (FoodCard, size/remarks modal, drink upsell,
+  // OTC, Visitor Menu) -- clicking a <button> focuses it, so it's reliably
+  // the element that was just clicked. Falls back to just the roll+check
+  // (no flight) if that assumption doesn't hold for some caller.
+  const triggerCartAddAnimation = (item) => {
+    const runRollThenCheck = () => {
+      setCartAnimPhase("roll");
+      setTimeout(()=>{
+        setCartAnimPhase("check");
+        setTimeout(()=>setCartAnimPhase("idle"), 650);
+      }, 600);
+    };
+    const startEl = document.activeElement;
+    const cartEl = cartIconRef.current;
+    if(startEl && startEl.tagName==="BUTTON" && cartEl){
+      const s = startEl.getBoundingClientRect();
+      const e = cartEl.getBoundingClientRect();
+      const flyId = Date.now()+Math.random();
+      const isPhoto = !!(item.isPhoto && (item.img||item.photo));
+      setCartFlyers(prev=>[...prev, {
+        id: flyId,
+        isPhoto, photoSrc: isPhoto ? (item.img||item.photo) : null, glyph: item.img||item.emoji||"🍽️",
+        x1: s.left+s.width/2, y1: s.top+s.height/2,
+        dx: (e.left+e.width/2)-(s.left+s.width/2), dy: (e.top+e.height/2)-(s.top+s.height/2),
+      }]);
+      setTimeout(()=>{
+        setCartFlyers(prev=>prev.filter(f=>f.id!==flyId));
+        runRollThenCheck();
+      }, 550);
+    } else {
+      runRollThenCheck();
+    }
+  };
 
   // shared by self-service checkout and the staff-run Over the Counter
   // sale — deducts Groceries stock and, for any item linked to a
@@ -1355,6 +1397,7 @@ export default function KFCanteen() {
       total: visitorCartTotal,
       time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
       source: "visitor-menu",
+      guestType: visitorGuestType,
       encodedBy: currentUser.name,
     };
     const { success } = await dbInsertOrder(order);
@@ -1363,6 +1406,7 @@ export default function KFCanteen() {
     setOrders(prev=>[order,...prev]);
     deductInventoryForItems(visitorCart);
     setVisitorCart([]);
+    setVisitorGuestType("visitor");
     setVisitorMenuDone(true);
     setTimeout(()=>setVisitorMenuDone(false),3000);
   };
@@ -2634,6 +2678,19 @@ export default function KFCanteen() {
             <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:16,alignSelf:"flex-start",position:isDesktop?"sticky":"static",top:70}}>
               <div style={{fontWeight:700,fontSize:15,color:"#111",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
                 <Icon name="cart" size={16} color={PURPLE} /> Order Summary
+              </div>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:600,color:"#6B7280",marginBottom:6}}>Customer Type</div>
+                <div style={{display:"flex",gap:4,background:"#F9FAFB",border:"1px solid #E5E7EB",borderRadius:9,padding:3}}>
+                  <button onClick={()=>setVisitorGuestType("visitor")}
+                    style={{flex:1,padding:"7px 10px",borderRadius:6,border:"none",background:visitorGuestType==="visitor"?PURPLE:"transparent",color:visitorGuestType==="visitor"?"#fff":"#6B7280",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                    🙋 Visitor
+                  </button>
+                  <button onClick={()=>setVisitorGuestType("guard")}
+                    style={{flex:1,padding:"7px 10px",borderRadius:6,border:"none",background:visitorGuestType==="guard"?PURPLE:"transparent",color:visitorGuestType==="guard"?"#fff":"#6B7280",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                    🛡️ Guard
+                  </button>
+                </div>
               </div>
               {visitorCart.length===0 ? (
                 <div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:"1.5rem 0"}}>No items yet.</div>
@@ -4424,9 +4481,11 @@ export default function KFCanteen() {
     if(activeTab==="sales") {
       const periodOrders = orders.filter(o=>{
         if(o.status==="cancelled"||!o.date) return false;
-        return salesViewMode==="month"
+        const plantMatch = salesPlantFilter==="All"||o.plant===salesPlantFilter;
+        const dateMatch = salesViewMode==="month"
           ? o.date.startsWith(salesYear+"-"+String(salesMonth+1).padStart(2,"0"))
           : o.date.startsWith(String(salesYear));
+        return plantMatch && dateMatch;
       });
       const periodLabel = salesViewMode==="month"
         ? new Date(salesYear,salesMonth).toLocaleDateString("en-PH",{month:"long",year:"numeric"})
@@ -4464,10 +4523,10 @@ export default function KFCanteen() {
 
       // sales by source
       const sourceStats = [
-        {key:"regular",     label:"Regular Menu",     icon:"🍱", test:o=>!o.source},
+        {key:"regular",     label:"Regular Menu",     icon:"🍱", test:o=>!o.source||o.source==="app"},
+        {key:"otc",         label:"Over the Counter", icon:"🧾", test:o=>o.source==="otc"},
         {key:"short-order", label:"Short Order",      icon:"🍽️", test:o=>o.source==="short-order"},
         {key:"visitor-menu",label:"Visitor Menu",     icon:"🙋", test:o=>o.source==="visitor-menu"},
-        {key:"otc",         label:"Over the Counter", icon:"🧾", test:o=>o.source==="otc"},
       ].map(s=>{
         const os = periodOrders.filter(s.test);
         return {...s, count:os.length, revenue:os.reduce((sum,o)=>sum+o.total,0)};
@@ -4512,6 +4571,18 @@ export default function KFCanteen() {
                 }}
                 style={{background:"none",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:16,color:PURPLE,display:"flex",alignItems:"center",justifyContent:"center"}}>{">"}</button>
             </div>
+          </div>
+
+          {/* Plant filter -- scopes every chart on this page (revenue trend,
+              top items, sales by source, period summary), same as the date
+              filter, in both Month and Year view. */}
+          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            {["All",...PLANTS].map(p=>(
+              <button key={p} onClick={()=>setSalesPlantFilter(p)}
+                style={{padding:"5px 14px",borderRadius:20,border:"1px solid #E5E7EB",background:salesPlantFilter===p?PURPLE:"#fff",color:salesPlantFilter===p?"#fff":"#6B7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                {p}
+              </button>
+            ))}
           </div>
 
           {/* period summary */}
@@ -4619,7 +4690,9 @@ export default function KFCanteen() {
             </div>
           </div>
 
-          {/* plant comparison */}
+          {/* plant comparison -- only meaningful when viewing all plants
+              together; scoped to one plant, it's just one 100% bar. */}
+          {salesPlantFilter==="All"&&(
           <div style={{background:"#fff",borderRadius:14,border:"1px solid #E5E7EB",padding:"18px 20px"}}>
             <span style={{fontSize:14,fontWeight:700,color:"#111",display:"block",marginBottom:12}}>Sales by Plant</span>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -4639,6 +4712,7 @@ export default function KFCanteen() {
               })}
             </div>
           </div>
+          )}
         </div>
       );
     }
@@ -6639,7 +6713,10 @@ export default function KFCanteen() {
   ════════════════════════════════════════ */
   return (
     <div style={{minHeight:"100vh",background:BG,fontFamily:"'Inter',system-ui,sans-serif",display:"flex"}}>
-      <style>{"@keyframes cartShake{0%,100%{transform:rotate(0deg)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}"}</style>
+      <style>{"@keyframes cartFly{0%{transform:translate(0,0) scale(1);opacity:1}70%{transform:translate(var(--dx),var(--dy)) scale(0.7);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(0.3);opacity:0}}"}</style>
+      <style>{"@keyframes cartRoll{0%{transform:translateX(0) rotate(0deg)}25%{transform:translateX(11px) rotate(18deg)}50%{transform:translateX(11px) rotate(-10deg)}75%{transform:translateX(3px) rotate(8deg)}100%{transform:translateX(0) rotate(0deg)}}"}</style>
+      <style>{"@keyframes cartRoad{0%{background-position:0 0}100%{background-position:-18px 0}}"}</style>
+      <style>{"@keyframes cartCheckPop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.25);opacity:1}100%{transform:scale(1);opacity:1}}"}</style>
       {/* ── Sidebar overlay (mobile/tablet only — desktop sidebar is a persistent flex sibling, no overlay needed) ── */}
       {sidebarOpen&&!isDesktop&&(
         <div onClick={()=>setSidebarOpen(false)}
@@ -6680,7 +6757,7 @@ export default function KFCanteen() {
             const isActive = activeTab===n.id;
             return (
               <button key={n.id}
-                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderShowAllDates(true); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
+                onClick={()=>{ if(n.id==="mgorders"){ setOrderSearch(""); setOrderPlantFilter("All"); setOrderFilterMode("month"); setOrderFilterMonth(TODAY_DATE.getMonth()); setOrderFilterYear(TODAY_DATE.getFullYear()); setOrderDateFilter(toDateKey(new Date())); } setActiveTab(n.id); setSidebarOpen(false); }}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",border:"none",background:isActive?PURPLE_LIGHT:"transparent",cursor:"pointer",textAlign:"left",borderLeft:`3px solid ${isActive?PURPLE:"transparent"}`,transition:"all 0.1s"}}>
                 <Icon name={n.icon} size={17} color={isActive?PURPLE:"#6B7280"} />
                 <span style={{fontSize:14,fontWeight:isActive?600:400,color:isActive?PURPLE:"#374151"}}>{n.label}</span>
@@ -6737,10 +6814,27 @@ export default function KFCanteen() {
         <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
           {/* Cart button for users and admin */}
           {(role==="user"||isAdminLike)&&(
-            <button onClick={()=>{setActiveTab("cart");setSidebarOpen(false);}}
+            <button ref={cartIconRef} onClick={()=>{setActiveTab("cart");setSidebarOpen(false);}}
               style={{background:activeTab==="cart"?PURPLE:PURPLE_LIGHT,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:activeTab==="cart"?"#fff":PURPLE,fontSize:13,display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-              <span key={cartShakeKey} style={{display:"inline-flex",alignItems:"center",gap:6,animation:cartShakeKey?"cartShake 0.5s ease":"none"}}>
-                <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
+              <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                <span style={{position:"relative",display:"inline-flex",width:26,height:15,overflow:"visible"}}>
+                  <span style={{position:"absolute",left:0,top:0,animation:cartAnimPhase==="roll"?"cartRoll 0.6s ease":"none"}}>
+                    {cartAnimPhase==="check"
+                      ? <span key="check" style={{display:"inline-flex",animation:"cartCheckPop 0.3s ease"}}>
+                          <Icon name="check" size={15} color={activeTab==="cart"?"#fff":"#059669"} />
+                        </span>
+                      : <Icon name="cart" size={15} color={activeTab==="cart"?"#fff":PURPLE} />
+                    }
+                  </span>
+                  {/* scrolling dashed "road" -- only shown for the moment the item is landing/rolling in, not while idle */}
+                  {cartAnimPhase==="roll"&&(
+                    <span style={{
+                      position:"absolute", left:-4, right:-4, bottom:-3, height:2,
+                      backgroundImage:`repeating-linear-gradient(to right, ${activeTab==="cart"?"#fff":PURPLE} 0 4px, transparent 4px 9px)`,
+                      backgroundSize:"18px 2px", animation:"cartRoad 0.6s linear",
+                    }} />
+                  )}
+                </span>
                 {cartCount>0&&<span style={{background:activeTab==="cart"?"#fff":PURPLE,color:activeTab==="cart"?PURPLE:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{cartCount}</span>}
               </span>
             </button>
@@ -7051,6 +7145,19 @@ export default function KFCanteen() {
             : "Order placed successfully!"}
         </div>
       )}
+      {/* add-to-cart flight animation: item glyph flies from the clicked
+          button to the header cart icon, which then rolls + shows a check */}
+      {cartFlyers.map(f=>(
+        <div key={f.id} style={{
+          position:"fixed", left:f.x1, top:f.y1, width:20, height:20, marginLeft:-10, marginTop:-10,
+          zIndex:300, pointerEvents:"none", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center",
+          "--dx":f.dx+"px", "--dy":f.dy+"px", animation:"cartFly 0.55s cubic-bezier(0.3,0,0.7,1) forwards",
+        }}>
+          {f.isPhoto
+            ? <img src={f.photoSrc} alt="" style={{width:20,height:20,borderRadius:"50%",objectFit:"cover",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}} />
+            : f.glyph}
+        </div>
+      ))}
       {/* add-to-cart toast */}
       {cartToast&&(
         <div key={cartToast.id} style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#111827",color:"#fff",padding:"10px 20px",borderRadius:12,fontSize:13,fontWeight:600,zIndex:200,display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",maxWidth:320,textAlign:"center"}}>
