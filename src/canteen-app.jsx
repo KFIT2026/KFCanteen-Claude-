@@ -3,7 +3,7 @@ import {
   fetchUsers, dbInsertUser, dbUpdateUser, dbDeleteUser, dbInsertUsers, dbDeleteUsers,
   fetchMenu, dbInsertMenuItem, dbUpdateMenuItem, dbDeleteMenuItem,
   fetchProducts, dbInsertProduct, dbUpdateProduct, dbDeleteProduct,
-  fetchOrders, dbInsertOrder, dbUpdateOrder,
+  fetchOrders, dbInsertOrder, dbUpdateOrder, dbNextOrderId,
   fetchInventoryLog, dbInsertLog,
   fetchReceipts, dbInsertReceipt, dbDeleteReceipt,
   fetchRawMaterials, dbInsertRawMaterial, dbUpdateRawMaterial, dbDeleteRawMaterial,
@@ -636,6 +636,7 @@ export default function KFCanteen() {
   const [orders, setOrders] = useState([]);
   useEffect(() => { fetchOrders().then(setOrders); }, []);
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [placingOrder, setPlacingOrder] = useState(false);
   const [orderRolledOver, setOrderRolledOver] = useState(false);
   const [showPlantModal, setShowPlantModal] = useState(false);
   const [orderPlant, setOrderPlant] = useState("");
@@ -654,6 +655,7 @@ export default function KFCanteen() {
   // visitor menu (admin/staff-admin only, fixed menu, own inline checkout)
   const [visitorCart, setVisitorCart] = useState([]);
   const [visitorMenuDone, setVisitorMenuDone] = useState(false);
+  const [placingVisitorOrder, setPlacingVisitorOrder] = useState(false);
   const [visitorMgSearch, setVisitorMgSearch] = useState("");
   const [shortOrderMgSearch, setShortOrderMgSearch] = useState("");
 
@@ -666,6 +668,7 @@ export default function KFCanteen() {
   const [otcCart, setOtcCart] = useState([]);
   const [otcPaymentModal, setOtcPaymentModal] = useState(false);
   const [otcDone, setOtcDone] = useState(false);
+  const [placingOtcSale, setPlacingOtcSale] = useState(false);
   const [otcMenuSearch, setOtcMenuSearch] = useState("");
   const [otcProductSearch, setOtcProductSearch] = useState("");
 
@@ -848,18 +851,6 @@ export default function KFCanteen() {
   // badge) — just not the superadmin-only real-identity lookup.
   const canModerateSuggestions = isAdminLike || role==="staff-admin";
 
-  // derived from currently-loaded orders (not a hardcoded/session-local counter) so IDs
-  // stay unique across page reloads and separate browser sessions — a fixed starting ref
-  // here previously caused every fresh session's first order to collide with any other
-  // session's first order (both becoming "KF000023"), silently failing to save.
-  const nextOrderId = () => {
-    const nums = orders
-      .map(o=>/^KF(\d+)$/.exec(o.id))
-      .filter(Boolean)
-      .map(m=>parseInt(m[1],10));
-    const next = (nums.length?Math.max(...nums):22) + 1;
-    return "KF" + String(next).padStart(6, "0");
-  };
   const handleLogin = () => {
     const usernameInput = loginForm.username.trim();
     const found = users.find(u=>u.username===usernameInput && u.password===loginForm.password && u.registered);
@@ -1202,8 +1193,9 @@ export default function KFCanteen() {
     }));
   };
 
-  const placeOrder = () => {
-    if(!cart.length) return;
+  const placeOrder = async () => {
+    if(!cart.length||placingOrder) return;
+    setPlacingOrder(true);
     const plant = orderPlant || currentUser.plant || "KF Main";
     // Only weekly-menu dishes (item.cat set) with no scheduled (advance)
     // date count as "today" ordering — Groceries (no .cat) never have a
@@ -1226,14 +1218,18 @@ export default function KFCanteen() {
     const orderDate = needsRollover
       ? toDateKey(new Date(Date.now()+86400000))
       : toDateKey(new Date());
-    const order={ id:nextOrderId(), user:currentUser.name, userId:currentUser.id,
+    const id = await dbNextOrderId();
+    if(!id){ alert("Couldn't place your order — please check your connection and try again."); setPlacingOrder(false); return; }
+    const order={ id, user:currentUser.name, userId:currentUser.id,
       date: orderDate,
       plant: plant,
       items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,grams:c.grams||null,servingUnit:c.servingUnit||"g",buyPrice:c.buyPrice||null,scheduledDate:c.scheduledDate?c.scheduledDate.toLocaleDateString("en-PH",{month:"short",day:"numeric"}):null,remarks:c.remarks||null,size:c.sizeLabel||null,productId:c.id||null})), total:cartTotal, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
       source: cart.some(c=>c.fixedMenu) ? "short-order" : undefined,
       placedAt: new Date().toISOString(), status:"active" };
+    const { success } = await dbInsertOrder(order);
+    setPlacingOrder(false);
+    if(!success){ alert("Couldn't save your order — please try again."); return; }
     setOrders(prev=>[order,...prev]);
-    dbInsertOrder(order);
     deductInventoryForItems(cart);
     setCart([]);
     setOrderPlant("");
@@ -1277,11 +1273,14 @@ export default function KFCanteen() {
   });
   const visitorUpdateQty = (key,delta) => setVisitorCart(prev=>prev.map(c=>c._key===key?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
   const visitorCartTotal = visitorCart.reduce((s,i)=>s+i.price*i.qty,0);
-  const placeVisitorOrder = () => {
-    if(!visitorCart.length) return;
+  const placeVisitorOrder = async () => {
+    if(!visitorCart.length||placingVisitorOrder) return;
+    setPlacingVisitorOrder(true);
     const plant = currentUser.plant||"KF Main";
+    const id = await dbNextOrderId();
+    if(!id){ alert("Couldn't place the order — please check your connection and try again."); setPlacingVisitorOrder(false); return; }
     const order = {
-      id: nextOrderId(),
+      id,
       user: currentUser.name,
       userId: currentUser.id,
       date: toDateKey(new Date()),
@@ -1292,8 +1291,10 @@ export default function KFCanteen() {
       source: "visitor-menu",
       encodedBy: currentUser.name,
     };
+    const { success } = await dbInsertOrder(order);
+    setPlacingVisitorOrder(false);
+    if(!success){ alert("Couldn't save the order — please try again."); return; }
     setOrders(prev=>[order,...prev]);
-    dbInsertOrder(order);
     deductInventoryForItems(visitorCart);
     setVisitorCart([]);
     setVisitorMenuDone(true);
@@ -1310,15 +1311,18 @@ export default function KFCanteen() {
   const otcUpdateQty = (id,delta) => setOtcCart(prev=>prev.map(c=>c.id===id?{...c,qty:Math.max(0,c.qty+delta)}:c).filter(c=>c.qty>0));
   const otcCartTotal = otcCart.reduce((s,i)=>s+i.price*i.qty,0);
 
-  const completeOtcSale = (paymentType) => {
-    if(!otcCart.length||!otcCustomer) return;
+  const completeOtcSale = async (paymentType) => {
+    if(!otcCart.length||!otcCustomer||placingOtcSale) return;
+    setPlacingOtcSale(true);
     const plant = currentUser.plant||"KF Main";
     const isEmployee = otcType==="employee";
+    const id = await dbNextOrderId();
+    if(!id){ alert("Couldn't complete the sale — please check your connection and try again."); setPlacingOtcSale(false); return; }
     // OTC has no separate "collect payment" step -- the register sale IS
     // the collection, so encodedBy/now doubles as collectedBy/collectedAt
     // for the "Collected by [name] on [date]" note shown in order history.
     const order = {
-      id: nextOrderId(),
+      id,
       user: otcCustomer.name,
       userId: isEmployee ? otcCustomer.id : null,
       date: otcDate || toDateKey(new Date()),
@@ -1333,8 +1337,10 @@ export default function KFCanteen() {
       collectedBy: currentUser.name,
       collectedAt: new Date().toISOString(),
     };
+    const { success } = await dbInsertOrder(order);
+    setPlacingOtcSale(false);
+    if(!success){ alert("Couldn't save the sale — please try again."); return; }
     setOrders(prev=>[order,...prev]);
-    dbInsertOrder(order);
     deductInventoryForItems(otcCart);
     if(paymentType==="Credit" && isEmployee){
       // Read the LIVE balance from `users`, not otcCustomer.creditBalance --
@@ -2542,9 +2548,9 @@ export default function KFCanteen() {
               <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:800,color:"#111",marginBottom:14}}>
                 <span>Total</span><span>₱{visitorCartTotal}</span>
               </div>
-              <button onClick={placeVisitorOrder} disabled={!visitorCart.length}
-                style={{width:"100%",background:visitorCart.length?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"12px",cursor:visitorCart.length?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-                Place Order
+              <button onClick={placeVisitorOrder} disabled={!visitorCart.length||placingVisitorOrder}
+                style={{width:"100%",background:(visitorCart.length&&!placingVisitorOrder)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"12px",cursor:(visitorCart.length&&!placingVisitorOrder)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                {placingVisitorOrder?"Placing Order...":"Place Order"}
               </button>
             </div>
           </div>
@@ -6020,14 +6026,14 @@ export default function KFCanteen() {
                     </div>
                   )}
                   <div style={{display:"grid",gridTemplateColumns:otcType==="employee"?"1fr 1fr":"1fr",gap:12}}>
-                    <button onClick={()=>completeOtcSale("Cash")}
-                      style={{background:"#F0FDF4",color:"#065F46",border:"2px solid #A7F3D0",borderRadius:12,padding:"18px 12px",cursor:"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                      <span style={{fontSize:28}}>💵</span><span>Cash</span>
+                    <button onClick={()=>completeOtcSale("Cash")} disabled={placingOtcSale}
+                      style={{background:"#F0FDF4",color:"#065F46",border:"2px solid #A7F3D0",borderRadius:12,padding:"18px 12px",cursor:placingOtcSale?"not-allowed":"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6,opacity:placingOtcSale?0.7:1}}>
+                      <span style={{fontSize:28}}>💵</span><span>{placingOtcSale?"Saving...":"Cash"}</span>
                     </button>
                     {otcType==="employee"&&(
-                      <button onClick={()=>{if(otcInsufficient)return;completeOtcSale("Credit");}} disabled={otcInsufficient}
-                        style={{background:otcInsufficient?"#F3F4F6":PURPLE_LIGHT,color:otcInsufficient?"#9CA3AF":PURPLE,border:"2px solid "+(otcInsufficient?"#E5E7EB":PURPLE+"44"),borderRadius:12,padding:"18px 12px",cursor:otcInsufficient?"not-allowed":"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6,opacity:otcInsufficient?0.7:1}}>
-                        <span style={{fontSize:28}}>💳</span><span>Credit</span>
+                      <button onClick={()=>{if(otcInsufficient||placingOtcSale)return;completeOtcSale("Credit");}} disabled={otcInsufficient||placingOtcSale}
+                        style={{background:otcInsufficient?"#F3F4F6":PURPLE_LIGHT,color:otcInsufficient?"#9CA3AF":PURPLE,border:"2px solid "+(otcInsufficient?"#E5E7EB":PURPLE+"44"),borderRadius:12,padding:"18px 12px",cursor:(otcInsufficient||placingOtcSale)?"not-allowed":"pointer",fontWeight:700,fontSize:15,display:"flex",flexDirection:"column",alignItems:"center",gap:6,opacity:(otcInsufficient||placingOtcSale)?0.7:1}}>
+                        <span style={{fontSize:28}}>💳</span><span>{placingOtcSale?"Saving...":"Credit"}</span>
                       </button>
                     )}
                   </div>
@@ -6493,9 +6499,9 @@ export default function KFCanteen() {
               })()}
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>{setShowPlantModal(false);setOrderPlant("");}} style={{flex:1,background:"#F3F4F6",color:"#374151",border:"1px solid #E5E7EB",borderRadius:9,padding:"11px",cursor:"pointer",fontSize:14,fontWeight:600}}>Cancel</button>
-                <button onClick={placeOrder} disabled={!orderPlant}
-                  style={{flex:2,background:orderPlant?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:orderPlant?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-                  Place Order at {orderPlant||"..."}
+                <button onClick={placeOrder} disabled={!orderPlant||placingOrder}
+                  style={{flex:2,background:(orderPlant&&!placingOrder)?PURPLE:"#C4B5FD",color:"#fff",border:"none",borderRadius:9,padding:"11px",cursor:(orderPlant&&!placingOrder)?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+                  {placingOrder?"Placing Order...":`Place Order at ${orderPlant||"..."}`}
                 </button>
               </div>
             </div>

@@ -305,6 +305,18 @@ export const fetchOrders = async () => {
 export const dbInsertOrder = async (order) => {
   const { error } = await supabase.from("orders").insert(orderToDb(order));
   if (error) console.error("dbInsertOrder failed:", error);
+  return { success: !error, error };
+};
+
+// Atomically assigns the next "KFxxxxxx" order id via a Postgres sequence
+// (see migration 023) -- generating it client-side from the locally loaded
+// orders list let two people placing orders around the same moment compute
+// the same "next" id before either insert was visible to the other, and
+// the second insert would silently fail (id is the primary key).
+export const dbNextOrderId = async () => {
+  const { data, error } = await supabase.rpc("next_order_id");
+  if (error) { console.error("dbNextOrderId failed:", error); return null; }
+  return data;
 };
 
 export const dbUpdateOrder = async (id, patch) => {
