@@ -3528,44 +3528,50 @@ export default function KFCanteen() {
             const creditTotal = creditOrders.reduce((s,o)=>s+o.total,0);
             const unpaidTotal = unpaidOrders.reduce((s,o)=>s+o.total,0);
             const overallTotal = cashTotal + creditTotal + unpaidTotal;
-            return <>
-              <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{filteredOrders.length}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Orders</span>
-                </div>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>{cashOrders.length}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash</span>
-                </div>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{creditOrders.length}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit</span>
-                </div>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>{unpaidOrders.length}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid</span>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:"#111"}}>₱{overallTotal.toLocaleString()}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Sales</span>
-                </div>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>₱{cashTotal.toLocaleString()}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash Sales</span>
-                </div>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>₱{creditTotal.toLocaleString()}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit Sales</span>
-                </div>
-                <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>₱{unpaidTotal.toLocaleString()}</span>
-                  <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid Sales</span>
+            return <div style={{display:"flex",gap:24,marginBottom:16,flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Order Records</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{filteredOrders.length}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Orders</span>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>{cashOrders.length}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash</span>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>{creditOrders.length}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit</span>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>{unpaidOrders.length}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid</span>
+                  </div>
                 </div>
               </div>
-            </>;
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Sales Records</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:"#111"}}>₱{overallTotal.toLocaleString()}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>Total Sales</span>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:"#059669"}}>₱{cashTotal.toLocaleString()}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💵 Cash Sales</span>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:PURPLE}}>₱{creditTotal.toLocaleString()}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>💳 Credit Sales</span>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:10,border:"1px solid #E5E7EB",padding:"10px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontSize:20,fontWeight:800,color:"#9CA3AF"}}>₱{unpaidTotal.toLocaleString()}</span>
+                    <span style={{fontSize:11,color:"#6B7280",fontWeight:600}}>⏳ Unpaid Sales</span>
+                  </div>
+                </div>
+              </div>
+            </div>;
           })()}
 
           {/* Date filter */}
