@@ -135,7 +135,7 @@ const PLANTS = ["KF Main","Colortree","KF II (Global)"];
 const SERVING_UNITS = [
   { id:"g",   label:"Weight (grams)", icon:"⚖️" },
   { id:"pcs", label:"Pieces",         icon:"🔢" },
-  { id:"cup", label:"Cups",           icon:"🥤" },
+  { id:"cup", label:"Cups",           icon:"🥣" },
 ];
 const unitIcon = (unit) => (SERVING_UNITS.find(u=>u.id===unit)||SERVING_UNITS[0]).icon;
 const unitSuffix = (unit, qty) => unit==="pcs" ? (qty===1?"pc":"pcs") : unit==="cup" ? (qty===1?"cup":"cups") : "g";
